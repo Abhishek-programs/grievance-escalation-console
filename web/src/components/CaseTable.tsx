@@ -15,12 +15,14 @@ const outcomeTone: Record<string, string> = {
 export function CaseTable({
   result,
   title,
+  description,
   loading,
   onOpen,
   onPage,
 }: {
   result: ICaseTable;
   title: string;
+  description: string;
   loading: boolean;
   onOpen: (id: string) => void;
   onPage: (page: number) => void;
@@ -29,10 +31,13 @@ export function CaseTable({
   const from = result.total === 0 ? 0 : (result.page - 1) * result.pageSize + 1;
   const to = Math.min(result.page * result.pageSize, result.total);
   return (
-    <Card aria-busy={loading} className="shadow-(--shadow)">
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="font-display">{title}</CardTitle>
-        <p className="text-sm text-muted-foreground">
+    <Card aria-busy={loading}>
+      <CardHeader className="flex-row items-end justify-between gap-4">
+        <div>
+          <CardTitle>{title}</CardTitle>
+          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">{description}</p>
+        </div>
+        <p className="text-[11px] text-muted-foreground tabular-nums">
           {loading ? "Loading queue…" : `${from}–${to} of ${result.total}`}
         </p>
       </CardHeader>
@@ -46,7 +51,7 @@ export function CaseTable({
             <TableHeader>
               <TableRow>
                 <TableHead>Complaint</TableHead>
-                <TableHead>Description</TableHead>
+                <TableHead>What was reported</TableHead>
                 <TableHead>Policy check</TableHead>
                 <TableHead>Decision</TableHead>
                 <TableHead>Forward to</TableHead>
@@ -58,10 +63,18 @@ export function CaseTable({
                 <TableRow key={item.id}>
                   <TableCell>
                     <p className="font-medium">{item.title}</p>
-                    <p className="text-muted-foreground">{humanize(item.normalized_status)}</p>
+                    <p className="text-muted-foreground">
+                      {item.complainant_name || "Name not recorded"}
+                      {item.category ? ` · ${item.category}` : ""}
+                    </p>
                   </TableCell>
-                  <TableCell className="max-w-xs text-muted-foreground">
-                    {item.description || "No description"}
+                  <TableCell className="max-w-sm">
+                    <p className="text-muted-foreground">
+                      {[item.place, item.ward ? `Ward ${item.ward}` : "", item.district]
+                        .filter(Boolean)
+                        .join(" · ") || "Place not recorded"}
+                    </p>
+                    <p className="mt-1 line-clamp-2">{item.description || "No account of what happened."}</p>
                   </TableCell>
                   <TableCell>
                     <PolicyCheck item={item} />

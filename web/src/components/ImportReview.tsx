@@ -10,36 +10,38 @@ import {
 } from "../types/import.ts";
 import { Alert } from "./ui/alert.tsx";
 import { Badge } from "./ui/badge.tsx";
-import { Button } from "./ui/button.tsx";
+import { Button, buttonVariants } from "./ui/button.tsx";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.tsx";
 import { Checkbox } from "./ui/checkbox.tsx";
 import { Label } from "./ui/label.tsx";
+import { VerifyEmail } from "./VerifyEmail.tsx";
 
 const sources = [
   {
     name: "WhatsApp",
-    columns: "message_id, message, notes, sent_at, state",
-    sample: "/api/samples/whatsapp.csv",
+    columns: "Who sent it, where they are, what happened, and what they asked for",
   },
   {
     name: "Website",
-    columns: "submission_id, subject, description, received_on, status",
+    columns: "Name, mobile, ward, the account, and the relief they want",
   },
   {
     name: "Facebook",
-    columns: "post_ref, post_text, extra, created, moderation_state",
+    columns: "Author, contact, place, the post, and the ask",
   },
   {
     name: "Spreadsheet",
-    columns: "complaint_no, complaint, remarks, date_received, case_status",
+    columns: "Complainant, phone, tole, the account, and the relief",
   },
 ];
 
 export function ImportReview({
-  actorId,
+  email,
+  onSignedIn,
   onCommitted,
 }: {
-  actorId: string;
+  email: string | null;
+  onSignedIn: (email: string) => void;
   onCommitted: () => void;
 }): React.ReactElement {
   const [open, setOpen] = useState(true);
@@ -73,7 +75,6 @@ export function ImportReview({
         headers: {
           "content-type": "text/csv",
           "x-source-name": file.name,
-          "x-actor-id": actorId,
         },
         body: await file.text(),
       });
@@ -104,7 +105,6 @@ export function ImportReview({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          actorId,
           rowIds: chosen.map((row) => String(row.id)),
           confirmedRowIds: chosen
             .filter((row) => row.outcome !== "VALID")
@@ -128,7 +128,7 @@ export function ImportReview({
   }
 
   return (
-    <Card className="shadow-(--shadow)">
+    <Card>
       <CardHeader>
         <button
           type="button"
@@ -148,21 +148,26 @@ export function ImportReview({
       {open && <CardContent className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <section className="space-y-2">
-          <h3 className="font-medium">You can import from these sources</h3>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-medium">You can import from these sources</h3>
+            <a
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+              href="/api/samples/complaint-samples.zip"
+              download
+            >
+              Download samples
+            </a>
+          </div>
           <ul className="grid gap-2 sm:grid-cols-2">
             {sources.map((source) => (
               <li key={source.name} className="rounded-md border p-3 text-sm">
                 <p className="font-medium">{source.name}</p>
                 <p className="text-muted-foreground">{source.columns}</p>
-                {source.sample && (
-                  <a className="text-primary underline" href={source.sample} download>
-                    Download a WhatsApp sample
-                  </a>
-                )}
               </li>
             ))}
           </ul>
         </section>
+        {!email && <VerifyEmail onVerified={onSignedIn} />}
         <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
           <div className="space-y-2">
             <Label htmlFor="csv-file">CSV file</Label>
@@ -174,7 +179,7 @@ export function ImportReview({
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />
           </div>
-          <Button type="button" disabled={!file || !actorId || busy !== ""} onClick={stage}>
+          <Button type="button" disabled={!file || !email || busy !== ""} onClick={stage}>
             {busy === "preview" ? "Staging…" : "Preview"}
           </Button>
         </div>
@@ -231,7 +236,14 @@ export function ImportReview({
                         <td className="p-3">
                           <p className="font-medium">{row.proposed_values.title || "Untitled"}</p>
                           <p className="text-muted-foreground">
-                            {row.source_record_id || "No source id"} · {formatDate(row.proposed_values.receivedDate)}
+                            {[
+                              row.proposed_values.complainantName,
+                              row.proposed_values.place,
+                              row.proposed_values.district,
+                              formatDate(row.proposed_values.receivedDate, ""),
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") || "No complainant recorded"}
                           </p>
                         </td>
                         <td className="p-3">
@@ -269,7 +281,7 @@ export function ImportReview({
                   )}
                 </div>
               )}
-              <Button type="button" disabled={selected.size === 0 || !actorId || busy !== ""} onClick={commit}>
+              <Button type="button" disabled={selected.size === 0 || !email || busy !== ""} onClick={commit}>
                 {busy === "commit" ? "Committing…" : `Commit ${selected.size} selected`}
               </Button>
             </div>

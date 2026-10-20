@@ -9,3 +9,4 @@ build/
 coverage/
 data/exports/*
 !data/exports/whatsapp-sample.csv
+.cursor/

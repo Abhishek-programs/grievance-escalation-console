@@ -159,6 +159,39 @@ test("a repeated file can commit the rows that are still open", async () => {
   }
 });
 
+test("the same source id can belong to two owners", async () => {
+  const csv = `${header}\nOWNER-1,Water supply stopped,Fictional test,2026-10-01,open,https://example.invalid/owner`;
+  const seed: any = await previewImport(pool, "website", "seed.csv", csv, "seed");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await commitSelectedRows(client, seed.batchId, [String(seed.groups.valid[0].id)], new Set(), "seed");
+    await client.query("COMMIT");
+  } finally {
+    client.release();
+  }
+  const stamp = Date.now();
+  const firstUser = await pool.query(
+    "INSERT INTO users(email) VALUES($1) RETURNING id",
+    [`owner-a-${stamp}@example.invalid`],
+  );
+  const secondUser = await pool.query(
+    "INSERT INTO users(email) VALUES($1) RETURNING id",
+    [`owner-b-${stamp}@example.invalid`],
+  );
+  const first: any = await previewImport(
+    pool, "website", "a.csv", csv, "a", String(firstUser.rows[0].id),
+  );
+  const second: any = await previewImport(
+    pool, "website", "b.csv", csv, "b", String(secondUser.rows[0].id),
+  );
+  assert.equal(first.counts.alreadyImported, 0);
+  assert.equal(first.counts.changedSourceRecords, 0);
+  assert.ok(first.groups.valid[0]);
+  assert.notEqual(first.batchId, second.batchId);
+  assert.ok(second.groups.valid[0]);
+});
+
 test.after(async () => {
   await pool.end();
 });

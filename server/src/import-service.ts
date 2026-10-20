@@ -12,6 +12,14 @@ type Mapping = {
   description: string;
   date: string;
   status: string;
+  complainant: string;
+  phone: string;
+  district: string;
+  localLevel: string;
+  ward: string;
+  place: string;
+  category: string;
+  relief: string;
   url?: string;
 };
 
@@ -19,9 +27,17 @@ const mappings: Record<Platform, Mapping> = {
   whatsapp: {
     id: "message_id",
     title: "message",
-    description: "notes",
+    description: "detail",
     date: "sent_at",
     status: "state",
+    complainant: "sender_name",
+    phone: "sender_phone",
+    district: "district",
+    localLevel: "municipality",
+    ward: "ward",
+    place: "place",
+    category: "category",
+    relief: "requested_action",
   },
   website: {
     id: "submission_id",
@@ -29,22 +45,46 @@ const mappings: Record<Platform, Mapping> = {
     description: "description",
     date: "received_on",
     status: "status",
+    complainant: "full_name",
+    phone: "mobile",
+    district: "district",
+    localLevel: "local_level",
+    ward: "ward",
+    place: "place",
+    category: "category",
+    relief: "relief_sought",
     url: "source_url",
   },
   facebook: {
     id: "post_ref",
     title: "post_text",
-    description: "extra",
+    description: "detail",
     date: "created",
     status: "moderation_state",
+    complainant: "author_name",
+    phone: "contact",
+    district: "district",
+    localLevel: "municipality",
+    ward: "ward",
+    place: "place",
+    category: "category",
+    relief: "ask",
     url: "permalink",
   },
   spreadsheet: {
     id: "complaint_no",
     title: "complaint",
-    description: "remarks",
+    description: "account",
     date: "date_received",
     status: "case_status",
+    complainant: "complainant",
+    phone: "phone",
+    district: "district",
+    localLevel: "local_level",
+    ward: "ward",
+    place: "tole",
+    category: "category",
+    relief: "relief",
   },
 };
 
@@ -92,6 +132,8 @@ function parseDate(value: string): string | null {
   return written ? `2026-10-${written[1].padStart(2, "0")}` : null;
 }
 
+const textOrNull = (value: unknown) => normalizedText(value) || null;
+
 function normalizeRow(raw: Record<string, unknown>, mapping: Mapping) {
   const originalStatus = normalizedText(raw[mapping.status]).toLowerCase();
   const receivedDate = parseDate(normalizedText(raw[mapping.date]));
@@ -99,7 +141,15 @@ function normalizeRow(raw: Record<string, unknown>, mapping: Mapping) {
     sourceRecordId: normalizedText(raw[mapping.id]) || null,
     sourceUrl: mapping.url ? normalizedText(raw[mapping.url]) || null : null,
     title: normalizedText(raw[mapping.title]),
-    description: normalizedText(raw[mapping.description]) || null,
+    description: textOrNull(raw[mapping.description]),
+    complainantName: textOrNull(raw[mapping.complainant]),
+    phone: textOrNull(raw[mapping.phone]),
+    district: textOrNull(raw[mapping.district]),
+    localLevel: textOrNull(raw[mapping.localLevel]),
+    ward: textOrNull(raw[mapping.ward]),
+    place: textOrNull(raw[mapping.place]),
+    category: textOrNull(raw[mapping.category]),
+    reliefSought: textOrNull(raw[mapping.relief]),
     receivedDate,
     normalizedStatus: knownStatuses[originalStatus] ?? null,
     originalStatus,
@@ -112,15 +162,17 @@ export async function previewImport(
   name: string,
   csv: string,
   actorId: string,
+  ownerUserId: string | null = null,
 ) {
   const rawRows = parse(csv, {
     columns: true,
     skip_empty_lines: true,
   }) as Record<string, unknown>[];
+  if (rawRows.length > 200) throw new Error("A file can contain at most 200 rows.");
   const sourceHash = fingerprint(csv);
   const prior = await pool.query(
-    "SELECT id FROM import_batches WHERE source_fingerprint=$1",
-    [sourceHash],
+    "SELECT id FROM import_batches WHERE source_fingerprint=$1 AND owner_user_id IS NOT DISTINCT FROM $2",
+    [sourceHash, ownerUserId],
   );
   if (prior.rows[0]) {
     // Reopen the same file so unfinished rows can still be committed.
@@ -133,12 +185,12 @@ export async function previewImport(
   try {
     await client.query("BEGIN");
     const batch = await client.query(
-      `INSERT INTO import_batches(source_platform,source_name,source_fingerprint,imported_at,imported_by,status) VALUES($1,$2,$3,now(),$4,'PREVIEW') RETURNING id`,
-      [platform, name, sourceHash, actorId],
+      `INSERT INTO import_batches(source_platform,source_name,source_fingerprint,imported_at,imported_by,status,owner_user_id) VALUES($1,$2,$3,now(),$4,'PREVIEW',$5) RETURNING id`,
+      [platform, name, sourceHash, actorId, ownerUserId],
     );
     const batchId = String(batch.rows[0].id);
     for (const [index, raw] of rawRows.entries())
-      await stageRow(client, batchId, index + 2, platform, raw);
+      await stageRow(client, batchId, index + 2, platform, raw, ownerUserId);
     await client.query("COMMIT");
     return await reviewSummary(pool, batchId);
   } catch (error) {
@@ -155,6 +207,7 @@ async function stageRow(
   rowNumber: number,
   platform: Platform,
   raw: Record<string, unknown>,
+  ownerUserId: string | null,
 ) {
   const proposed = normalizeRow(raw, mappings[platform]);
   const warnings: string[] = [];
@@ -166,14 +219,14 @@ async function stageRow(
     warnings.push("Status mapping needs clarification");
   const sameSource = proposed.sourceRecordId
     ? await client.query(
-        "SELECT id,original_values FROM cases WHERE source_platform=$1 AND source_record_id=$2",
-        [platform, proposed.sourceRecordId],
+        "SELECT id,original_values FROM cases WHERE source_platform=$1 AND source_record_id=$2 AND owner_user_id IS NOT DISTINCT FROM $3",
+        [platform, proposed.sourceRecordId, ownerUserId],
       )
     : { rows: [] };
   const similar = proposed.title
     ? await client.query(
-        "SELECT id FROM cases WHERE lower(title)=lower($1) LIMIT 1",
-        [proposed.title],
+        "SELECT id FROM cases WHERE lower(title)=lower($1) AND owner_user_id IS NOT DISTINCT FROM $2 LIMIT 1",
+        [proposed.title, ownerUserId],
       )
     : { rows: [] };
   let outcome = errors.length
@@ -322,6 +375,14 @@ async function insertCaseAndAudit(
     proposed_values: {
       title: string;
       description: string | null;
+      complainantName: string | null;
+      phone: string | null;
+      district: string | null;
+      localLevel: string | null;
+      ward: string | null;
+      place: string | null;
+      category: string | null;
+      reliefSought: string | null;
       receivedDate: string | null;
       normalizedStatus: string | null;
     };
@@ -330,9 +391,11 @@ async function insertCaseAndAudit(
 ): Promise<string> {
   const value = row.proposed_values;
   const createdAt = new Date().toISOString();
-  const directory = await findDirectory(client, value.title, value.description);
-  const inserted = await client.query(
-    `INSERT INTO cases(source_platform,source_record_id,source_url,import_batch_id,import_row_id,original_values,title,description,received_date,normalized_status,department_id,created_at) SELECT b.source_platform,$1,$2,b.id,$3,$4,$5,$6,$7,$8,$9,$10 FROM import_batches b WHERE b.id=$11 ON CONFLICT(source_platform,source_record_id) DO NOTHING RETURNING id`,
+  const directory = await findDirectory(client, value.title, value.description, value.category);
+  let inserted;
+  try {
+  inserted = await client.query(
+    `INSERT INTO cases(source_platform,source_record_id,source_url,import_batch_id,import_row_id,original_values,title,description,complainant_name,phone,district,local_level,ward,place,category,relief_sought,received_date,normalized_status,department_id,owner_user_id,created_at) SELECT b.source_platform,$1,$2,b.id,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,b.owner_user_id,$18 FROM import_batches b WHERE b.id=$19 RETURNING id`,
     [
       row.source_record_id,
       row.source_url,
@@ -340,6 +403,14 @@ async function insertCaseAndAudit(
       row.original_values,
       value.title,
       value.description,
+      value.complainantName,
+      value.phone,
+      value.district,
+      value.localLevel,
+      value.ward,
+      value.place,
+      value.category,
+      value.reliefSought,
       value.receivedDate,
       value.normalizedStatus ?? "NEEDS_CLARIFICATION",
       directory?.departmentId ?? null,
@@ -347,6 +418,11 @@ async function insertCaseAndAudit(
       row.batch_id,
     ],
   );
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+    if (code === "23505") throw new Error("Source record already exists; review required");
+    throw error;
+  }
   if (!inserted.rows[0]) throw new Error("Source record already exists; review required");
   const caseId = String(inserted.rows[0].id);
   await client.query(

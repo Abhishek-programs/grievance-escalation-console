@@ -1,3 +1,3 @@
-message_id,message,notes,sent_at,state
-"WH-1000","Water leaking beside the market","Fictional report 1","","pending?"
-"WH-1001","Road damage near school","Fictional report 2","2026-10-02","in progress"
+message_id,sender_name,sender_phone,district,municipality,ward,place,category,message,detail,requested_action,sent_at,state
+"WH-1000","Sita Tamang","9801001001","Morang","Biratnagar Metropolitan City","8","Devkota Chowk","Drinking water","No water in the lane for nine days","The municipal tap in our lane has been dry since the pipe burst near the chowk. About forty households are buying jars. The ward office said a team would come on Sunday. Nobody came, and the broken section is still open.","Repair the pipe and restore the morning supply. Tell the ward which day the water will return.","2026-10-02","in progress"
+"WH-1001","Ram Bahadur Gurung","9801001002","Kaski","Pokhara Metropolitan City","12","Malepatan","Road and drainage","The school road is broken and floods","The blacktop in front of the school has a hole about a meter wide. Children walk around it into the drain when it rains. Two tempos have already scraped the edge.","Fill the hole before the school week and put a temporary barrier until the patch is finished.","02/10/2026","open"

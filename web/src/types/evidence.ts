@@ -1,4 +1,5 @@
 export interface IEvidence {
+  writable?: boolean;
   evaluations: IEvidenceEvaluation[];
   decisions: IEvidenceDecision[];
   followUps: IEvidenceFollowUp[];
@@ -41,6 +42,14 @@ export interface IEvidenceCase {
   id: string | number;
   title: string;
   description?: string | null;
+  complainant_name?: string | null;
+  phone?: string | null;
+  district?: string | null;
+  local_level?: string | null;
+  ward?: string | null;
+  place?: string | null;
+  category?: string | null;
+  relief_sought?: string | null;
   received_date?: string | null;
   normalized_status?: string;
   original_values: Record<string, unknown>;

@@ -1,7 +1,14 @@
 import type { Pool } from "pg";
 
-export async function dashboardMetrics(pool: Pool) {
+function visibleTo(viewerId: string | null) {
+  return viewerId
+    ? { sql: "(owner_user_id IS NULL OR owner_user_id=$1)", values: [viewerId] }
+    : { sql: "owner_user_id IS NULL", values: [] };
+}
+
+export async function dashboardMetrics(pool: Pool, viewerId: string | null) {
   // Count operational queues from the same state used by the table.
+  const visible = visibleTo(viewerId);
   const result = await pool.query(`SELECT
     count(*) FILTER (WHERE normalized_status<>'RESOLVED') AS open,
     count(*) FILTER (WHERE recommendation_outcome='ESCALATE') AS overdue,
@@ -9,7 +16,7 @@ export async function dashboardMetrics(pool: Pool) {
     count(*) FILTER (WHERE department_id IS NOT NULL AND employee_id IS NULL) AS unassigned_employee,
     count(*) FILTER (WHERE follow_up_status='OPEN') AS waiting_on_team,
     count(*) FILTER (WHERE decision='REJECTED') AS rejected
-    FROM case_operational_state`);
+    FROM case_operational_state WHERE ${visible.sql}`, visible.values);
   const row = result.rows[0];
 
   return {
@@ -29,10 +36,14 @@ export async function dashboardCases(
     departmentId?: string;
     page: number;
     pageSize: number;
+    viewerId: string | null;
   },
 ) {
   const conditions: string[] = [];
   const values: unknown[] = [];
+  const visible = visibleTo(input.viewerId);
+  conditions.push(visible.sql.replaceAll("$1", `$${values.length + 1}`));
+  values.push(...visible.values);
   const add = (sql: string, value?: unknown) => {
     conditions.push(sql);
     if (value !== undefined) values.push(value);
@@ -67,7 +78,7 @@ export async function dashboardCases(
   };
 }
 
-export async function caseEvidence(pool: Pool, caseId: string) {
+export async function caseEvidence(pool: Pool, caseId: string, viewerId: string | null) {
   // Return every layer needed to explain one operational record.
   const [caseRow, evaluations, decisions, followUps, audit] = await Promise.all(
     [
@@ -94,9 +105,13 @@ export async function caseEvidence(pool: Pool, caseId: string) {
     ],
   );
 
-  if (!caseRow.rows[0]) return null;
+  const record = caseRow.rows[0];
+  if (!record) return null;
+  const owner = record.owner_user_id == null ? null : String(record.owner_user_id);
+  if (owner && owner !== viewerId) return null;
   return {
-    case: caseRow.rows[0],
+    case: record,
+    writable: owner !== null && owner === viewerId,
     evaluations: evaluations.rows,
     decisions: decisions.rows,
     followUps: followUps.rows,

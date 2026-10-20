@@ -8,7 +8,7 @@ const pool = new Pool({
     "postgres://app:local-development-only@localhost:5432/grievances",
 });
 test("dashboard pagination respects page size", async () => {
-  const result = await dashboardCases(pool, { page: 1, pageSize: 1 });
+  const result = await dashboardCases(pool, { page: 1, pageSize: 1, viewerId: null });
   assert.ok(result.items.length <= 1);
   assert.equal(result.pageSize, 1);
 });
@@ -17,6 +17,7 @@ test("open bucket excludes resolved cases", async () => {
     bucket: "open",
     page: 1,
     pageSize: 100,
+    viewerId: null,
   });
   assert.ok(
     result.items.every((item: any) => item.normalized_status !== "RESOLVED"),

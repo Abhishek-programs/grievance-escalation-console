@@ -29,7 +29,7 @@ export function policyTiming(
   outcome: string | null | undefined,
 ): string {
   if (!outcome) return "Not checked";
-  if (!deadline) return "Received date still needed";
+  if (!deadline) return outcome === "NEEDS_CLARIFICATION" ? "Deadline not set" : "Received date still needed";
   const day = deadline.slice(0, 10);
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kathmandu",

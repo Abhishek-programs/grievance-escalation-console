@@ -68,13 +68,13 @@ async function insertEvaluation(client: PoolClient, result: ReturnType<typeof re
 
 export async function applyPolicyCheck(client: PoolClient, caseId: string): Promise<string> {
   const caseResult = await client.query(
-    "SELECT id,title,description,received_date::text,normalized_status FROM cases WHERE id=$1",
+    "SELECT id,title,description,category,received_date::text,normalized_status FROM cases WHERE id=$1",
     [caseId],
   );
   const row = caseResult.rows[0];
   if (!row) throw new Error("Case not found");
   const policy = await loadPolicy(client);
-  const candidate = await findDirectory(client, row.title, row.description);
+  const candidate = await findDirectory(client, row.title, row.description, row.category);
   const result = recommend(
     {
       caseId: String(row.id),

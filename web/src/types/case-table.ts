@@ -9,6 +9,12 @@ export interface ICaseTableItem {
   id: string;
   title: string;
   description: string | null;
+  complainant_name: string | null;
+  district: string | null;
+  local_level: string | null;
+  ward: string | null;
+  place: string | null;
+  category: string | null;
   normalized_status: string;
   department_name: string | null;
   decision: string | null;

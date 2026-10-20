@@ -1,7 +1,18 @@
-import express from "express";
+import { existsSync, readFileSync } from "node:fs";
+import express, { type Request, type Response } from "express";
 import { Pool } from "pg";
-import { resolve } from "node:path";
+import {
+  clearSessionCookie,
+  endSession,
+  normalizeEmail,
+  requestCode,
+  sessionCookie,
+  userFromRequest,
+  verifyCode,
+  type SessionUser,
+} from "./auth.ts";
 import { commitSelectedRows, detectPlatform, previewImport } from "./import-service.ts";
+import { complaintSamplesZip } from "./sample-archive.ts";
 import { applyPolicyCheck } from "./evaluation.ts";
 import { recordDecision, type DecisionKind } from "./decision-service.ts";
 import {
@@ -9,6 +20,15 @@ import {
   dashboardCases,
   dashboardMetrics,
 } from "./dashboard-service.ts";
+
+if (existsSync(".env")) {
+  for (const line of readFileSync(".env", "utf8").split("\n")) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (match && process.env[match[1]] === undefined) {
+      process.env[match[1]] = match[2].trim().replace(/^["']|["']$/g, "");
+    }
+  }
+}
 
 const app = express();
 
@@ -24,11 +44,67 @@ app.get("/openapi.yaml", (_req, res) => {
   res.sendFile("docs/openapi.yaml", { root: process.cwd() });
 });
 
+async function requireUser(req: Request, res: Response): Promise<SessionUser | null> {
+  const user = await userFromRequest(pool, req);
+  if (!user) {
+    res.status(401).json({
+      error: {
+        code: "SIGN_IN_REQUIRED",
+        message: "Sign in with your email to import or change a case.",
+      },
+    });
+  }
+  return user;
+}
+
+app.get("/api/auth/session", async (req, res) => {
+  const user = await userFromRequest(pool, req);
+  res.json({ email: user?.email ?? null });
+});
+
+app.post("/api/auth/code", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    await requestCode(pool, email, req.ip ?? "unknown");
+    res.status(202).json({ sent: true });
+  } catch (error) {
+    res.status(400).json({
+      error: {
+        code: "CODE_NOT_SENT",
+        message: error instanceof Error ? error.message : "The code could not be sent.",
+      },
+    });
+  }
+});
+
+app.post("/api/auth/verify", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    const session = await verifyCode(pool, email, String(req.body.code ?? ""));
+    res.setHeader("set-cookie", sessionCookie(session.token));
+    res.json({ email: session.email });
+  } catch (error) {
+    res.status(400).json({
+      error: {
+        code: "CODE_REJECTED",
+        message: error instanceof Error ? error.message : "That code does not match.",
+      },
+    });
+  }
+});
+
+app.post("/api/auth/logout", async (req, res) => {
+  await endSession(pool, req);
+  res.setHeader("set-cookie", clearSessionCookie());
+  res.status(204).end();
+});
+
 app.get("/api/dashboard", async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));
+  const viewer = await userFromRequest(pool, req);
   const [metrics, cases] = await Promise.all([
-    dashboardMetrics(pool),
+    dashboardMetrics(pool, viewer?.id ?? null),
     dashboardCases(pool, {
       bucket: req.query.bucket ? String(req.query.bucket) : undefined,
       departmentId: req.query.departmentId
@@ -36,12 +112,14 @@ app.get("/api/dashboard", async (req, res) => {
         : undefined,
       page,
       pageSize,
+      viewerId: viewer?.id ?? null,
     }),
   ]);
   res.json({ metrics, cases });
 });
 app.get("/api/cases/:id/evidence", async (req, res) => {
-  const evidence = await caseEvidence(pool, req.params.id);
+  const viewer = await userFromRequest(pool, req);
+  const evidence = await caseEvidence(pool, req.params.id, viewer?.id ?? null);
   if (!evidence) {
     res
       .status(404)
@@ -52,6 +130,8 @@ app.get("/api/cases/:id/evidence", async (req, res) => {
 });
 
 app.post("/api/evaluations/:id/decisions", async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
   const allowed: DecisionKind[] = [
     "APPROVED",
     "REJECTED",
@@ -71,11 +151,28 @@ app.post("/api/evaluations/:id/decisions", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const owner = await client.query(
+      `SELECT c.owner_user_id FROM evaluations e JOIN cases c ON c.id=e.case_id WHERE e.id=$1`,
+      [req.params.id],
+    );
+    const decisionOwner = owner.rows[0]?.owner_user_id;
+    if (!owner.rows[0] || (decisionOwner != null && String(decisionOwner) !== user.id)) {
+      await client.query("ROLLBACK");
+      res.status(403).json({
+        error: {
+          code: "READ_ONLY",
+          message: owner.rows[0]
+            ? "This case belongs to another visitor."
+            : "That decision could not be recorded.",
+        },
+      });
+      return;
+    }
     const result = await recordDecision(client, {
       evaluationId: req.params.id,
       decision,
       reason: req.body.reason,
-      actorId: String(req.body.actorId ?? "supervisor-1"),
+      actorId: user.email,
       ownerDepartmentId: req.body.ownerDepartmentId
         ? String(req.body.ownerDepartmentId)
         : undefined,
@@ -99,13 +196,26 @@ app.post("/api/evaluations/:id/decisions", async (req, res) => {
 });
 
 app.post("/api/cases/:id/evaluations", async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const caseResult = await client.query(
-      "SELECT id FROM cases WHERE id=$1 FOR UPDATE",
+      "SELECT id, owner_user_id FROM cases WHERE id=$1 FOR UPDATE",
       [req.params.id],
     );
+    const evaluationOwner = caseResult.rows[0]?.owner_user_id;
+    if (caseResult.rows[0] && evaluationOwner != null && String(evaluationOwner) !== user.id) {
+      await client.query("ROLLBACK");
+      res.status(403).json({
+        error: {
+          code: "READ_ONLY",
+          message: "This case belongs to another visitor.",
+        },
+      });
+      return;
+    }
     if (!caseResult.rows[0]) {
       await client.query("ROLLBACK");
       res
@@ -129,14 +239,19 @@ app.post("/api/cases/:id/evaluations", async (req, res) => {
   }
 });
 
-app.get("/api/samples/whatsapp.csv", (_req, res) => {
-  res.download(resolve("data/exports/whatsapp-sample.csv"), "whatsapp-sample.csv");
+app.get("/api/samples/complaint-samples.zip", async (_req, res) => {
+  res
+    .type("application/zip")
+    .attachment("complaint-samples.zip")
+    .send(await complaintSamplesZip());
 });
 
 app.post(
   "/api/imports/preview",
   express.text({ type: "text/csv", limit: "512kb" }),
   async (req, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
     try {
       const csv = String(req.body);
       const platform = detectPlatform(csv);
@@ -145,7 +260,8 @@ app.post(
         platform,
         String(req.headers["x-source-name"] ?? "upload.csv"),
         csv,
-        String(req.headers["x-actor-id"] ?? "import-reviewer"),
+        user.email,
+        user.id,
       );
       res.status(201).json(result);
     } catch (error) {
@@ -160,7 +276,9 @@ app.post(
 );
 
 app.post("/api/imports/:batchId/commit", async (req, res) => {
-  const actorId = String(req.body.actorId ?? "import-reviewer");
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const actorId = user.email;
   const rowIds = Array.isArray(req.body.rowIds)
     ? req.body.rowIds.map(String)
     : [];
@@ -172,6 +290,20 @@ app.post("/api/imports/:batchId/commit", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const batch = await client.query(
+      "SELECT owner_user_id FROM import_batches WHERE id=$1",
+      [req.params.batchId],
+    );
+    if (!batch.rows[0] || String(batch.rows[0].owner_user_id ?? "") !== user.id) {
+      await client.query("ROLLBACK");
+      res.status(403).json({
+        error: {
+          code: "READ_ONLY",
+          message: "This import belongs to another visitor.",
+        },
+      });
+      return;
+    }
     const result = await commitSelectedRows(
       client,
       String(req.params.batchId),

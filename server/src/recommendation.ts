@@ -30,14 +30,21 @@ export interface Recommendation {
 export function departmentCodeFor(facts: {
   title: string;
   description: string | null;
+  category?: string | null;
 }): string | null {
-  // Recommend a team from explicit, reviewable keyword rules.
-  const text = `${facts.title} ${facts.description ?? ""}`.toLowerCase();
+  // Recommend a team from the category and the complaint text.
+  const text = `${facts.category ?? ""} ${facts.title} ${facts.description ?? ""}`.toLowerCase();
   if (text.includes("water")) return "WATER";
-  if (text.includes("road") || text.includes("transport")) return "ROADS";
-  if (text.includes("clinic") || text.includes("health")) return "HEALTH";
-  if (text.includes("certificate") || text.includes("administration"))
+  if (text.includes("road") || text.includes("transport") || text.includes("drain")) return "ROADS";
+  if (text.includes("clinic") || text.includes("health") || text.includes("vaccine")) return "HEALTH";
+  if (
+    text.includes("certificate") ||
+    text.includes("administration") ||
+    text.includes("citizenship") ||
+    text.includes("registration")
+  ) {
     return "ADMIN";
+  }
   return null;
 }
 
@@ -45,8 +52,9 @@ export async function findDirectory(
   client: PoolClient,
   title: string,
   description: string | null,
+  category?: string | null,
 ): Promise<DirectoryCandidate | null> {
-  const code = departmentCodeFor({ title, description });
+  const code = departmentCodeFor({ title, description, category });
   if (!code) return null;
   const directory = await client.query(
     `SELECT d.id AS department_id,e.id AS employee_id FROM departments d LEFT JOIN LATERAL (SELECT id FROM employees WHERE department_id=d.id AND active ORDER BY escalation_level,id LIMIT 1) e ON TRUE WHERE d.code=$1`,

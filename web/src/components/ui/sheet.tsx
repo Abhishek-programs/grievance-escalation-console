@@ -15,7 +15,7 @@ export function SheetContent({
       <Dialog.Overlay className="fixed inset-0 z-50 bg-foreground/40" />
       <Dialog.Content
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col gap-4 overflow-y-auto border-l bg-card p-6 shadow-lg",
+          "fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col gap-6 overflow-y-auto border-l border-border bg-background p-7 shadow-(--shadow)",
           className,
         )}
         {...props}
@@ -33,7 +33,7 @@ export function SheetHeader({ className, ...props }: React.ComponentProps<"div">
   return <div className={cn("flex flex-col gap-1.5 pr-8", className)} {...props} />;
 }
 export function SheetTitle({ className, ...props }: React.ComponentProps<typeof Dialog.Title>) {
-  return <Dialog.Title className={cn("text-lg font-semibold", className)} {...props} />;
+  return <Dialog.Title className={cn("font-display text-2xl font-medium tracking-[-0.04em]", className)} {...props} />;
 }
 export function SheetDescription({ className, ...props }: React.ComponentProps<typeof Dialog.Description>) {
   return <Dialog.Description className={cn("text-sm text-muted-foreground", className)} {...props} />;

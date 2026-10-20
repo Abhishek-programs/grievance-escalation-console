@@ -7,6 +7,9 @@ export interface ImportRow {
   errors: unknown;
   proposed_values: {
     title?: string;
+    complainantName?: string | null;
+    place?: string | null;
+    district?: string | null;
     receivedDate?: string | null;
     normalizedStatus?: string | null;
   };

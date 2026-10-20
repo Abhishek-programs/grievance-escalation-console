@@ -9,6 +9,7 @@ import { Label } from "./ui/label.tsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet.tsx";
 import { Textarea } from "./ui/textarea.tsx";
+import { VerifyEmail } from "./VerifyEmail.tsx";
 
 const decisions: Array<{ value: DecisionKind; label: string }> = [
   { value: "APPROVED", label: "Approve" },
@@ -19,12 +20,14 @@ const decisions: Array<{ value: DecisionKind; label: string }> = [
 
 export function EvidenceDrawer({
   evidence,
-  actorId,
+  email,
+  onSignedIn,
   onClose,
   onChanged,
 }: {
   evidence: IEvidence | null;
-  actorId: string;
+  email: string | null;
+  onSignedIn: (email: string) => void;
   onClose: () => void;
   onChanged: () => Promise<void>;
 }): React.ReactElement {
@@ -32,6 +35,7 @@ export function EvidenceDrawer({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [pending, setPending] = useState<"" | "evaluate" | "decide">("");
   const latest = evidence?.evaluations[0];
   const decided = latest?.id
     ? (evidence?.decisions ?? []).some((item) => String(item.evaluation_id ?? "") === String(latest.id))
@@ -40,6 +44,11 @@ export function EvidenceDrawer({
 
   async function evaluate() {
     if (!evidence) return;
+    if (!email) {
+      setPending("evaluate");
+      setError("");
+      return;
+    }
     setBusy("evaluate");
     setError("");
     try {
@@ -54,13 +63,59 @@ export function EvidenceDrawer({
 
   async function submitDecision() {
     if (!latest?.id) return;
+    if (!email) {
+      setPending("decide");
+      setError("");
+      return;
+    }
     setBusy("decide");
     setError("");
     try {
       await request(`/api/evaluations/${latest.id}/decisions`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ decision, reason, actorId }),
+        body: JSON.stringify({ decision, reason }),
+      });
+      setReason("");
+      await onChanged();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Decision failed");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function signedIn(next: string) {
+    const action = pending;
+    setPending("");
+    onSignedIn(next);
+    if (action === "evaluate") void evaluateAfterSignIn();
+    if (action === "decide") void submitAfterSignIn();
+  }
+
+  async function evaluateAfterSignIn() {
+    if (!evidence) return;
+    setBusy("evaluate");
+    setError("");
+    try {
+      await request(`/api/cases/${evidence.case.id}/evaluations`, { method: "POST" });
+      await onChanged();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Evaluation failed");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function submitAfterSignIn() {
+    if (!latest?.id) return;
+    setBusy("decide");
+    setError("");
+    try {
+      await request(`/api/evaluations/${latest.id}/decisions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision, reason }),
       });
       setReason("");
       await onChanged();
@@ -79,37 +134,56 @@ export function EvidenceDrawer({
         {record && (
           <>
             <SheetHeader>
+              <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+                {[record.category, humanize(record.source_platform)].filter(Boolean).join(" · ")}
+              </p>
               <SheetTitle>{record.title}</SheetTitle>
               <SheetDescription>
-                {humanize(record.source_platform)} · {record.source_name}
+                {[
+                  record.complainant_name,
+                  record.phone,
+                  [record.place, record.ward ? `Ward ${record.ward}` : "", record.local_level, record.district]
+                    .filter(Boolean)
+                    .join(", "),
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || humanize(record.source_platform)}
               </SheetDescription>
             </SheetHeader>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <dl className="grid gap-3 text-sm">
-              <Fact label="Status" value={humanize(record.normalized_status)} />
-              <Fact label="Received" value={formatDate(record.received_date)} />
-              <Fact label="Imported" value={`${formatTimestamp(record.imported_at)} by ${record.imported_by}`} />
-            </dl>
-            {record.description && <p className="text-sm">{record.description}</p>}
+            <section className="space-y-3">
+              <h3 className="text-base">What happened</h3>
+              <p className="max-w-[65ch] text-sm leading-[1.8]">
+                {record.description || "The complaint has no account of what happened."}
+              </p>
+            </section>
+            <section className="space-y-3 border-t border-border pt-6">
+              <h3 className="text-base">What they asked for</h3>
+              <p className="max-w-[65ch] text-sm leading-[1.8]">
+                {record.relief_sought || "No requested action was recorded."}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Received {formatDate(record.received_date, "date not recorded")} · {humanize(record.normalized_status)}
+              </p>
+            </section>
 
-            <section className="space-y-2">
+            <section className="space-y-3 border-t border-border pt-6">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="font-medium">Recommendation</h3>
-                <Button type="button" size="sm" disabled={!actorId || busy !== ""} onClick={evaluate}>
-                  {busy === "evaluate" ? "Evaluating…" : "Run policy evaluation"}
+                <h3 className="text-base">Deadline</h3>
+                <Button type="button" variant="outline" size="sm" disabled={busy !== ""} onClick={evaluate}>
+                  {busy === "evaluate" ? "Checking…" : "Check again"}
                 </Button>
               </div>
+              {pending === "evaluate" && !email && <VerifyEmail onVerified={signedIn} />}
               {latest ? (
                 <div className="space-y-2 text-sm">
-                  <Badge variant={badgeVariant(latest.recommendation_outcome)}>
-                    {humanize(latest.recommendation_outcome)}
-                  </Badge>
-                  <p>{latest.recommended_next_step}</p>
-                  <p className="text-muted-foreground">{latest.recommendation_reason}</p>
+                  <p>
+                    <Badge variant={badgeVariant(latest.recommendation_outcome)}>
+                      {humanize(latest.recommendation_outcome)}
+                    </Badge>
+                  </p>
                   <p>{policyTiming(latest.calculated_deadline, latest.recommendation_outcome)}</p>
-                  {latest.calculated_deadline && (
-                    <p className="text-muted-foreground">Counted through {formatDate(latest.calculated_deadline)}</p>
-                  )}
+                  <p className="text-muted-foreground">{latest.recommended_next_step}</p>
                   {trace.length > 0 && (
                     <details>
                       <summary className="cursor-pointer text-muted-foreground">How the days were counted</summary>
@@ -124,12 +198,12 @@ export function EvidenceDrawer({
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No policy evaluation yet.</p>
+                <p className="text-sm text-muted-foreground">No deadline check yet.</p>
               )}
             </section>
 
-            <section className="space-y-3">
-              <h3 className="font-medium">Supervisor decision</h3>
+            <section className="space-y-3 border-t border-border pt-6">
+              <h3 className="text-base">Supervisor decision</h3>
               {evidence.decisions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No decision recorded.</p>
               ) : (
@@ -145,6 +219,7 @@ export function EvidenceDrawer({
                   ))}
                 </ul>
               )}
+              {pending === "decide" && !email && <VerifyEmail onVerified={signedIn} />}
               {latest?.id && !decided && (
                 <div className="space-y-3 rounded-lg border p-3">
                   <div className="space-y-2">
@@ -168,7 +243,7 @@ export function EvidenceDrawer({
                   </div>
                   <Button
                     type="button"
-                    disabled={!actorId || busy !== "" || (reasonRequired && reason.trim() === "")}
+                    disabled={busy !== "" || (reasonRequired && reason.trim() === "")}
                     onClick={submitDecision}
                   >
                     {busy === "decide" ? "Saving…" : "Record decision"}
@@ -177,64 +252,41 @@ export function EvidenceDrawer({
               )}
             </section>
 
-            <section className="space-y-2">
-              <h3 className="font-medium">Follow-up</h3>
-              {evidence.followUps.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No follow-up action.</p>
-              ) : (
+            {evidence.followUps.length > 0 && (
+              <section className="space-y-3 border-t border-border pt-6">
+                <h3 className="text-base">Follow-up</h3>
                 <ul className="space-y-3 text-sm">
                   {evidence.followUps.map((item, index) => (
-                    <li key={`${item.due_date}-${index}`} className="space-y-1 border-t pt-3">
+                    <li key={`${item.due_date}-${index}`} className="space-y-1">
                       <Badge variant={badgeVariant(item.status)}>{humanize(item.status, "Open")}</Badge>
                       <p>{item.action_text ?? "Follow-up"}</p>
                       <p className="text-muted-foreground">Due {formatDate(item.due_date)}</p>
                     </li>
                   ))}
                 </ul>
-              )}
-            </section>
+              </section>
+            )}
 
-            <section className="space-y-2">
-              <h3 className="font-medium">Audit</h3>
-              {evidence.audit.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No audit events.</p>
-              ) : (
-                <ol className="space-y-3 text-sm">
-                  {evidence.audit.map((event) => (
-                    <li key={event.id} className="border-t pt-3">
-                      <p className="font-medium">{humanize(event.event_type)}</p>
-                      <p className="text-muted-foreground">
-                        {formatTimestamp(event.event_time)} · {event.actor_id}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
-
-            <details className="rounded-lg border p-3 text-sm">
-              <summary className="cursor-pointer font-medium">Original imported values</summary>
-              <dl className="mt-3 grid gap-2">
-                {Object.entries(record.original_values).map(([key, value]) => (
-                  <div key={key} className="grid grid-cols-[8rem_1fr] gap-2">
-                    <dt className="text-muted-foreground">{humanize(key)}</dt>
-                    <dd>{value == null || value === "" ? "Empty" : String(value)}</dd>
-                  </div>
+            <details className="border-t border-border pt-6 text-sm">
+              <summary className="cursor-pointer text-muted-foreground">File and audit</summary>
+              <ol className="mt-4 space-y-3">
+                {evidence.audit.map((event) => (
+                  <li key={event.id}>
+                    <p>{humanize(event.event_type)}</p>
+                    <p className="text-muted-foreground">
+                      {formatTimestamp(event.event_time)} · {event.actor_id}
+                    </p>
+                  </li>
                 ))}
-              </dl>
+              </ol>
+              <p className="mt-4 text-[11px] text-muted-foreground">
+                Imported {formatTimestamp(record.imported_at)} by {record.imported_by}
+                {record.source_name ? ` · ${record.source_name}` : ""}
+              </p>
             </details>
           </>
         )}
       </SheetContent>
     </Sheet>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[7rem_1fr] gap-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd>{value}</dd>
-    </div>
   );
 }

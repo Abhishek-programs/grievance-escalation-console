@@ -4,14 +4,35 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Grievance desk</title>
+    <meta
+      name="description"
+      content="A review-first desk for fictional grievances. Import a complaint, check the deadline, and see who should receive it."
+    />
+    <meta name="theme-color" content="#181a1d" />
+    <meta property="og:title" content="Grievance desk" />
+    <meta
+      property="og:description"
+      content="A review-first desk for fictional grievances. Import a complaint, check the deadline, and see who should receive it."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Grievance desk" />
+    <meta
+      name="twitter:description"
+      content="A review-first desk for fictional grievances. Import a complaint, check the deadline, and see who should receive it."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <script>
-      document.documentElement.dataset.theme =
-        localStorage.getItem("sdoc-theme") === "light" ? "light" : "dark";
+      var dark = localStorage.getItem("sdoc-theme") !== "light";
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+      document.querySelector('meta[name="theme-color"]').setAttribute("content", dark ? "#181a1d" : "#fcfcfb");
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700&family=Noto+Sans+Devanagari:wght@500;600&family=Public+Sans:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Noto+Sans+Devanagari:wght@500;600&family=Public+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
   </head>

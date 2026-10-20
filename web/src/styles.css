@@ -1,0 +1,73 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #172033;
+  background: #f4f6f9;
+}
+body {
+  margin: 0;
+}
+button {
+  cursor: pointer;
+}
+main {
+  padding: 24px;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  gap: 12px;
+}
+.metric,
+.panel,
+.drawer {
+  background: white;
+  border: 1px solid #d9dee8;
+  border-radius: 10px;
+  padding: 16px;
+}
+.metric {
+  display: flex;
+  justify-content: space-between;
+  text-align: left;
+}
+.metric.active {
+  border-color: #3659d9;
+  box-shadow: 0 0 0 2px #dbe3ff;
+}
+.metric strong {
+  font-size: 24px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.panel {
+  margin-top: 16px;
+}
+th,
+td {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid #e7eaf0;
+}
+.drawer {
+  position: fixed;
+  inset: 24px 24px 24px auto;
+  width: min(640px, 85vw);
+  overflow: auto;
+  box-shadow: 0 16px 48px #0003;
+}
+.drawer pre {
+  white-space: pre-wrap;
+  background: #f7f8fb;
+  padding: 12px;
+  border-radius: 6px;
+}
+@media (max-width: 900px) {
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .panel {
+    overflow: auto;
+  }
+}

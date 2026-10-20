@@ -4,9 +4,11 @@
     "type": "module",
     "scripts": {
         "dev:server": "node --watch server/src/server.ts",
+        "dev:web": "vite --config web/vite.config.ts",
         "test": "node --test server/tests/*.test.ts",
-        "migrate": "node server/src/migrate.ts",
-        "generate:data": "node server/src/generate-data.ts",
+        "migrate": "node server/scripts/migrate.ts",
+        "generate:data": "node server/scripts/generate-data.ts",
+        "build": "vite build --config web/vite.config.ts",
         "ci": "npm test && npm run build"
     },
     "engines": {
@@ -23,6 +25,8 @@
         "@types/express": "^5.0.6",
         "@types/node": "^26.6.5",
         "@types/pg": "^8.23.1",
+        "@types/react": "^19.3.0",
+        "@types/react-dom": "^19.3.0",
         "typescript": "7.0.2",
         "vite": "8.3.4"
     }

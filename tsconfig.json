@@ -1,13 +1,15 @@
 {
   "compilerOptions": {
     "target": "ES2024",
+    "lib": ["ES2024", "DOM"],
     "module": "nodenext",
     "moduleResolution": "nodenext",
-    "types": ["node", "pg"],
+    "jsx": "react-jsx",
+    "types": ["node", "pg", "react"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["server/**/*.ts"]
+  "include": ["server/**/*.ts", "web/**/*.ts", "web/**/*.tsx"]
 }

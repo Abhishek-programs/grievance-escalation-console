@@ -66,7 +66,7 @@ Generate a larger fictional set (50 rows per platform) and preview the website f
 
 ```bash
 npm run generate:data
-node server/src/preview-demo.ts
+node server/scripts/preview-demo.ts
 ```
 
 Generated files land in `data/exports/` and are gitignored, except `whatsapp-sample.csv`.
@@ -84,13 +84,14 @@ npm test
 ## Layout
 
 ```text
-compose.yaml                 local Postgres
-server/src/server.ts         HTTP API
-server/src/import-service.ts CSV mapping, staging, review groups
-server/src/policy.ts         working-day deadlines
-server/src/migrate.ts        apply SQL migrations
-server/src/generate-data.ts  reproducible sample exports
-server/migrations/           schema
-server/tests/policy.test.ts
+compose.yaml                     local Postgres
+server/src/                      API and domain services
+server/scripts/                  migrate, sample data, and demos
+server/migrations/               schema
+server/tests/
+web/src/                         console UI
+web/src/components/
+web/src/types/
+web/vite.config.ts
 data/exports/whatsapp-sample.csv
 ```

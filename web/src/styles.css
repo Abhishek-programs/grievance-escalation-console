@@ -2,20 +2,46 @@
   font-family: Inter, system-ui, sans-serif;
   color: #172033;
   background: #f4f6f9;
+  line-height: 1.45;
 }
 body {
   margin: 0;
 }
 button {
   cursor: pointer;
+  font: inherit;
+}
+button:focus-visible {
+  outline: 2px solid #3659d9;
+  outline-offset: 2px;
 }
 main {
+  max-width: 1100px;
+  margin: 0 auto;
   padding: 24px;
+}
+.top h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+.top p,
+.muted,
+.panel-head p {
+  margin: 4px 0 0;
+  color: #5c6a80;
+}
+.alert {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fde8e8;
+  color: #8d1d1d;
 }
 .metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
+  margin-top: 20px;
 }
 .metric,
 .panel,
@@ -23,51 +49,194 @@ main {
   background: white;
   border: 1px solid #d9dee8;
   border-radius: 10px;
-  padding: 16px;
 }
 .metric {
   display: flex;
-  justify-content: space-between;
-  text-align: left;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px 16px;
+  color: inherit;
+}
+.metric span {
+  color: #5c6a80;
+  font-size: 0.9rem;
+}
+.metric strong {
+  font-size: 1.8rem;
+  line-height: 1;
 }
 .metric.active {
   border-color: #3659d9;
-  box-shadow: 0 0 0 2px #dbe3ff;
+  box-shadow: inset 0 0 0 1px #3659d9;
 }
-.metric strong {
-  font-size: 24px;
+.panel {
+  margin-top: 16px;
+  padding: 8px 8px 16px;
+}
+.panel-head,
+.pager,
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.panel-head {
+  padding: 8px 8px 0;
+}
+.panel-head h2,
+.drawer h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.table-wrap {
+  overflow: auto;
 }
 table {
   width: 100%;
   border-collapse: collapse;
-}
-.panel {
-  margin-top: 16px;
 }
 th,
 td {
   text-align: left;
   padding: 10px;
   border-bottom: 1px solid #e7eaf0;
+  vertical-align: top;
+}
+tbody tr {
+  cursor: pointer;
+}
+tbody tr:hover {
+  background: #f7f9fc;
+}
+.missing {
+  color: #8a5a00;
+}
+.chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef1f6;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.chip.good {
+  background: #e5f6ea;
+  color: #146c36;
+}
+.chip.warn {
+  background: #fff4d6;
+  color: #7a5200;
+}
+.chip.bad {
+  background: #fde8e8;
+  color: #8d1d1d;
+}
+.empty {
+  margin: 16px 8px;
+  color: #5c6a80;
+}
+.pager {
+  padding: 12px 8px 0;
+}
+.pager button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.backdrop {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  background: #17203366;
 }
 .drawer {
   position: fixed;
-  inset: 24px 24px 24px auto;
-  width: min(640px, 85vw);
+  inset: 16px 16px 16px auto;
+  width: min(460px, calc(100vw - 32px));
   overflow: auto;
+  padding: 16px 20px 28px;
   box-shadow: 0 16px 48px #0003;
 }
-.drawer pre {
-  white-space: pre-wrap;
-  background: #f7f8fb;
-  padding: 12px;
-  border-radius: 6px;
+.drawer-head {
+  position: sticky;
+  top: 0;
+  background: white;
+  padding-bottom: 8px;
+}
+.source {
+  margin-top: 0;
+  color: #5c6a80;
+}
+.facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+.facts div {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 8px;
+}
+.facts dt {
+  color: #5c6a80;
+}
+.facts dd {
+  margin: 0;
+}
+.drawer h3 {
+  margin: 22px 0 8px;
+  font-size: 0.95rem;
+}
+.stack,
+.audit {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.stack li,
+.audit li {
+  padding: 10px 0;
+  border-top: 1px solid #e7eaf0;
+}
+.audit {
+  padding-left: 0;
+}
+.audit li {
+  display: grid;
+  gap: 2px;
+}
+.audit span,
+.stack .muted {
+  color: #5c6a80;
+  font-size: 0.9rem;
+}
+details {
+  margin-top: 22px;
+}
+details summary {
+  cursor: pointer;
+  font-weight: 650;
 }
 @media (max-width: 900px) {
   .metrics {
     grid-template-columns: 1fr 1fr;
   }
-  .panel {
-    overflow: auto;
+  .facts div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+@media (max-width: 640px) {
+  main {
+    padding: 16px;
+  }
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+  .drawer {
+    inset: 0;
+    width: auto;
+    border-radius: 0;
   }
 }

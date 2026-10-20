@@ -1,5 +1,6 @@
 export interface ICaseTable {
   page: number;
+  pageSize: number;
   items: ICaseTableItem[];
   total: number;
 }

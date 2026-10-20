@@ -1,0 +1,46 @@
+export function humanize(value: string | null | undefined, empty = "None"): string {
+  if (!value) return empty;
+  const text = value.replaceAll("_", " ").toLowerCase();
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+const dateFormat = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "Asia/Kathmandu",
+});
+
+export function formatDate(value: string | null | undefined, empty = "None"): string {
+  if (!value) return empty;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    return dateFormat.format(new Date(Date.UTC(year, month - 1, day, 6)));
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : dateFormat.format(date);
+}
+
+export function formatTimestamp(value: string | null | undefined): string {
+  if (!value) return "None";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return formatDate(value);
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Asia/Kathmandu",
+  }).format(date);
+}
+
+export function tone(value: string | null | undefined): string {
+  if (!value) return "chip";
+  if (["RESOLVED", "APPROVED", "COMPLETED"].includes(value)) return "chip good";
+  if (["ESCALATE", "REJECTED", "CANCELLED"].includes(value)) return "chip bad";
+  if (["OPEN", "IN_PROGRESS", "NEEDS_CLARIFICATION", "CLARIFICATION_REQUESTED", "REASSIGNED"].includes(value))
+    return "chip warn";
+  return "chip";
+}

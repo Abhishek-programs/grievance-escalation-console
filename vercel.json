@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "express",
+  "functions": {
+    "server.ts": {
+      "includeFiles": "public/**"
+    }
+  },
   "rewrites": [{ "source": "/how-it-is-built", "destination": "/index.html" }]
 }

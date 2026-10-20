@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { resolve, sep } from "node:path";
 import express, { type Request, type Response } from "express";
 import { Pool } from "pg";
 import { attachDatabasePool } from "@vercel/functions";
@@ -343,8 +344,30 @@ app.get("/api/health", async (_req, res) =>
   }),
 );
 
-app.get("/how-it-is-built", (_req, res) => {
-  res.sendFile("index.html", { root: "public" });
+const publicRoot = resolve("public");
+
+app.use((req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  const relative = req.path === "/" ? "index.html" : req.path.replace(/^\/+/, "");
+  const file = resolve(publicRoot, relative);
+  if (file !== publicRoot && !file.startsWith(publicRoot + sep)) return next();
+  const isFile = (path: string) => {
+    try {
+      return statSync(path).isFile();
+    } catch {
+      return false;
+    }
+  };
+  if (isFile(file)) {
+    res.sendFile(file);
+    return;
+  }
+  const index = resolve(publicRoot, "index.html");
+  if (!relative.includes(".") && isFile(index)) {
+    res.sendFile(index);
+    return;
+  }
+  next();
 });
 
 export default app;

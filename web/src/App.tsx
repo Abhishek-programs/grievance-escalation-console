@@ -107,7 +107,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [bucket, page, refreshToken, path]);
+  }, [bucket, page, refreshToken, path, email]);
 
   const loadEvidence = useCallback(async (id: string) => {
     setEvidence(await request<IEvidence>(`/api/cases/${id}/evidence`, { method: "GET" }));

@@ -1,0 +1,3 @@
+{
+  "rewrites": [{ "source": "/how-it-is-built", "destination": "/index.html" }]
+}

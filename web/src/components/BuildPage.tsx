@@ -50,7 +50,7 @@ const sections = [
     title: "A source id is unique for one owner",
     body: [
       "A case is unique on source platform and source record id. That was a single global constraint while the desk had one reviewer. It broke as soon as a second person could upload. The sample file would belong to whoever imported it first, and the next visitor would be told the rows were already imported.",
-      "The seeded desk has a null owner. A verified visitor has a user id. PostgreSQL unique indexes treat nulls as distinct, so one index cannot mean both “one seed” and “one copy per visitor.” I split them. A partial unique index covers the seed, where owner_user_id is null. Another covers (owner, platform, source id) where the owner is present. The fingerprint on a batch is split the same way. Duplicate checks use IS NOT DISTINCT FROM so a null owner is compared with other null owners, not with every visitor.",
+      "An early version kept a shared seed under a null owner. A verified visitor has a user id. PostgreSQL unique indexes treat nulls as distinct, so one index cannot mean both “one unowned row” and “one copy per visitor.” I split them. A partial unique index covers rows where owner_user_id is null. Another covers (owner, platform, source id) where the owner is present. The fingerprint on a batch is split the same way. Duplicate checks use IS NOT DISTINCT FROM so a null owner is compared with other null owners, not with every visitor. The API no longer returns those unowned rows. A session matches its own owner_user_id and nothing else.",
       "An empty source id is stored as NULL. PostgreSQL leaves NULL out of a unique index, so those rows are compared by title inside that same owner. I would rather name that limit than pretend a blank cell is an identity. Two visitors can import the same sample. They do not share a batch, and neither of them can open the other’s cases.",
     ],
   },
@@ -87,11 +87,11 @@ const sections = [
   {
     n: "09",
     kicker: "Access",
-    title: "The seeded desk is public. A new file requires a verified email",
+    title: "Each email sees only the complaints it imported",
     body: [
       "Hosting this on a portfolio site has two failure modes. One visitor can upload until the disk and the database fill. Every visitor otherwise shares one mutable desk, so a stranger can reject the demonstration. I did not add accounts, passwords, or an organization model. The gate is an email code.",
-      "Anyone can read the seeded queues and open a complaint. Import, commit, a fresh policy check, and a supervisor decision require a session. The visitor enters an email. Resend sends a 6-digit code. The code is stored as a SHA-256 of the address and the code, expires in ten minutes, and allows five attempts. Asking for a code is capped per address and per IP, because the form would otherwise spend the email quota. The session is an httpOnly cookie for fourteen days. The code is never returned in the JSON.",
-      "The action buttons stay on the complaint when nobody is signed in. Using one opens the code form, and the action continues after the code is accepted. New batches and cases store the user id. The queue is the seed plus that visitor’s own rows. Another visitor gets a not-found on those cases. A fingerprint and a source id are unique per owner. The shared seed can be worked once the email is verified. A private import cannot.",
+      "The queues, a complaint, an import, a policy check, and a supervisor decision all require a session. The visitor enters an email. Resend sends a 6-digit code. The code is stored as an HMAC of the address and the code, keyed with a server pepper, because a plain hash of six digits can be reversed from a copy of the table. It expires in ten minutes and allows five attempts. The guess takes a row lock, and a new code takes an advisory lock, so parallel requests cannot slip past either cap. Asking for a code is also capped per address and per IP, because the form would otherwise spend the email quota. The session is an httpOnly cookie for fourteen days, and Secure in production. The code is never returned in the JSON.",
+      "New batches and cases store that user id. The queue is only those rows. Opening a case, checking the deadline, and recording a decision succeed only when the session owns the row. Another address gets an empty queue and a not-found. A fingerprint and a source id are unique per owner, so two people can import the same sample without sharing it.",
     ],
   },
   {
@@ -125,7 +125,8 @@ export function BuildLink({
           How this desk is built
         </p>
         <p className="mt-4 max-w-[40rem] text-sm leading-[1.9] text-muted-foreground">
-          A build log of the stack, the transactions, and the sign-in boundary. Written the way I would explain the system in a review.
+          A build log of the stack, the transactions, and the sign-in boundary.
+          Written the way I would explain the system in a review.
         </p>
         <span className={`${buttonVariants()} mt-8`}>Read the build</span>
       </div>
@@ -156,22 +157,33 @@ export function BuildPage({
         <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
           Build log
         </p>
-        <h1 className="mt-4 max-w-5xl text-[clamp(36px,3.7vw,54px)]">How this desk is built</h1>
+        <h1 className="mt-4 max-w-5xl text-[clamp(36px,3.7vw,54px)]">
+          How this desk is built
+        </h1>
         <p className="mt-4 max-w-6xl text-sm leading-[1.9] text-muted-foreground">
-          Ten notes from the implementation. Each one names the constraint, the tool that holds it, and the failure the design is there to prevent.
+          Ten notes from the implementation. Each one names the constraint, the
+          tool that holds it, and the failure the design is there to prevent.
         </p>
         <p className="mt-10 max-w-6xl font-display text-[1.65rem] leading-[1.25] font-medium tracking-[-0.04em] text-balance">
           A write is finished when a later reader can see why it was allowed.
         </p>
         <p className="mt-8 text-[11px] tracking-wide text-muted-foreground uppercase">
-          TypeScript · Node 24 · Express 5 · PostgreSQL 18 · React 19 · Vite · Resend
+          TypeScript · Node 24 · Express 5 · PostgreSQL 18 · React 19 · Vite ·
+          Resend
         </p>
         <div className="mt-16">
           {sections.map((section) => (
-            <section key={section.n} className="grid grid-cols-[3rem_1fr] gap-x-4 border-t border-border py-10">
-              <p className="pt-1 text-[11px] text-muted-foreground tabular-nums">{section.n}</p>
+            <section
+              key={section.n}
+              className="grid grid-cols-[3rem_1fr] gap-x-4 border-t border-border py-10"
+            >
+              <p className="pt-1 text-[11px] text-muted-foreground tabular-nums">
+                {section.n}
+              </p>
               <div>
-                <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">{section.kicker}</p>
+                <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+                  {section.kicker}
+                </p>
                 <h2 className="mt-2 text-xl">{section.title}</h2>
                 {section.body.map((paragraph) => (
                   <p key={paragraph} className="mt-3 text-sm leading-[1.8]">

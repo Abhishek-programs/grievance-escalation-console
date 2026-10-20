@@ -1,9 +1,20 @@
+import { existsSync, readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { Pool } from "pg";
 
-// Connect to the local Compose database.
+if (existsSync(".env")) {
+  for (const line of readFileSync(".env", "utf8").split("\n")) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (match && process.env[match[1]] === undefined) {
+      process.env[match[1]] = match[2].trim().replace(/^["']|["']$/g, "");
+    }
+  }
+}
+
 const pool = new Pool({
   connectionString:
+    process.env.DATABASE_URL_UNPOOLED ||
+    process.env.DATABASE_URL ||
     "postgres://app:local-development-only@localhost:5432/grievances",
 });
 

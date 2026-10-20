@@ -12,6 +12,12 @@ test("dashboard pagination respects page size", async () => {
   assert.ok(result.items.length <= 1);
   assert.equal(result.pageSize, 1);
 });
+test("a session sees only cases it owns", async () => {
+  const anon = await dashboardCases(pool, { page: 1, pageSize: 100, viewerId: null });
+  assert.equal(anon.total, 0);
+  const other = await dashboardCases(pool, { page: 1, pageSize: 100, viewerId: "0" });
+  assert.ok(other.items.every((item: { owner_user_id: unknown }) => String(item.owner_user_id) === "0"));
+});
 test("open bucket excludes resolved cases", async () => {
   const result = await dashboardCases(pool, {
     bucket: "open",

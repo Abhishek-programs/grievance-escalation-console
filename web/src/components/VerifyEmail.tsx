@@ -52,7 +52,7 @@ export function VerifyEmail({
   return (
     <div className="space-y-3 rounded-[17px] border border-border p-4">
       <p className="text-sm leading-relaxed">
-        The shared desk is open to read. Enter your email to import a file or change a case you imported.
+        Enter your email. After the code, this desk shows only the complaints and decisions for that address.
       </p>
       <div className="space-y-2">
         <Label htmlFor="sign-in-email">Email</Label>

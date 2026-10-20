@@ -7,5 +7,5 @@ export default defineConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
   plugins: [tailwindcss()],
   server: { proxy: { "/api": "http://localhost:3000" } },
-  build: { outDir: "dist", emptyOutDir: true },
+  build: { outDir: "../public", emptyOutDir: true },
 });

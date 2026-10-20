@@ -1,5 +1,6 @@
 node_modules/
 dist/
+/public/
 build/
 .env
 .env.*
@@ -10,3 +11,4 @@ coverage/
 data/exports/*
 !data/exports/whatsapp-sample.csv
 .cursor/
+.neon

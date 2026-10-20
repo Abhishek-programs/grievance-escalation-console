@@ -1,9 +1,10 @@
 import type { Pool } from "pg";
 
 function visibleTo(viewerId: string | null) {
+  // A missing session matches nothing. A session matches only that user's rows.
   return viewerId
-    ? { sql: "(owner_user_id IS NULL OR owner_user_id=$1)", values: [viewerId] }
-    : { sql: "owner_user_id IS NULL", values: [] };
+    ? { sql: "owner_user_id=$1", values: [viewerId] }
+    : { sql: "FALSE", values: [] };
 }
 
 export async function dashboardMetrics(pool: Pool, viewerId: string | null) {
@@ -80,12 +81,13 @@ export async function dashboardCases(
 
 export async function caseEvidence(pool: Pool, caseId: string, viewerId: string | null) {
   // Return every layer needed to explain one operational record.
-  const [caseRow, evaluations, decisions, followUps, audit] = await Promise.all(
-    [
-      pool.query(
-        `SELECT c.*,ir.original_values,ir.proposed_values,ir.outcome AS import_outcome,ib.source_name,ib.source_platform,ib.imported_at,ib.imported_by FROM cases c JOIN import_rows ir ON ir.id=c.import_row_id JOIN import_batches ib ON ib.id=c.import_batch_id WHERE c.id=$1`,
-        [caseId],
-      ),
+  if (!viewerId) return null;
+  const caseRow = await pool.query(
+    `SELECT c.*,ir.original_values,ir.proposed_values,ir.outcome AS import_outcome,ib.source_name,ib.source_platform,ib.imported_at,ib.imported_by FROM cases c JOIN import_rows ir ON ir.id=c.import_row_id JOIN import_batches ib ON ib.id=c.import_batch_id WHERE c.id=$1 AND c.owner_user_id=$2`,
+    [caseId, viewerId],
+  );
+  if (!caseRow.rows[0]) return null;
+  const [evaluations, decisions, followUps, audit] = await Promise.all([
       pool.query(
         "SELECT * FROM evaluations WHERE case_id=$1 ORDER BY evaluated_at DESC,id DESC",
         [caseId],
@@ -102,16 +104,11 @@ export async function caseEvidence(pool: Pool, caseId: string, viewerId: string 
         "SELECT * FROM audit_events WHERE entity_type='case' AND entity_id=$1 ORDER BY event_time,id",
         [caseId],
       ),
-    ],
-  );
+  ]);
 
-  const record = caseRow.rows[0];
-  if (!record) return null;
-  const owner = record.owner_user_id == null ? null : String(record.owner_user_id);
-  if (owner && owner !== viewerId) return null;
   return {
-    case: record,
-    writable: owner !== null && owner === viewerId,
+    case: caseRow.rows[0],
+    writable: true,
     evaluations: evaluations.rows,
     decisions: decisions.rows,
     followUps: followUps.rows,

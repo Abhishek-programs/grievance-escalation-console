@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import express, { type Request, type Response } from "express";
 import { Pool } from "pg";
+import { attachDatabasePool } from "@vercel/functions";
 import {
   clearSessionCookie,
   endSession,
@@ -31,13 +32,22 @@ if (existsSync(".env")) {
 }
 
 const app = express();
+if (process.env.VERCEL) app.set("trust proxy", 1);
 
 app.use(express.json({ limit: "64kb" }));
 
+function clientMessage(error: unknown, fallback: string) {
+  const code = (error as { code?: unknown })?.code;
+  const sqlState = typeof code === "string" && /^[0-9A-Z]{5}$/.test(code);
+  return error instanceof Error && !sqlState ? error.message : fallback;
+}
+
 const pool = new Pool({
   connectionString:
+    process.env.DATABASE_URL ||
     "postgres://app:local-development-only@localhost:5432/grievances",
 });
+attachDatabasePool(pool);
 
 app.get("/openapi.yaml", (_req, res) => {
   // Serve the versioned API contract from the repository.
@@ -71,7 +81,7 @@ app.post("/api/auth/code", async (req, res) => {
     res.status(400).json({
       error: {
         code: "CODE_NOT_SENT",
-        message: error instanceof Error ? error.message : "The code could not be sent.",
+        message: clientMessage(error, "The code could not be sent."),
       },
     });
   }
@@ -87,7 +97,7 @@ app.post("/api/auth/verify", async (req, res) => {
     res.status(400).json({
       error: {
         code: "CODE_REJECTED",
-        message: error instanceof Error ? error.message : "That code does not match.",
+        message: clientMessage(error, "That code does not match."),
       },
     });
   }
@@ -156,7 +166,7 @@ app.post("/api/evaluations/:id/decisions", async (req, res) => {
       [req.params.id],
     );
     const decisionOwner = owner.rows[0]?.owner_user_id;
-    if (!owner.rows[0] || (decisionOwner != null && String(decisionOwner) !== user.id)) {
+    if (!owner.rows[0] || String(decisionOwner ?? "") !== user.id) {
       await client.query("ROLLBACK");
       res.status(403).json({
         error: {
@@ -187,7 +197,7 @@ app.post("/api/evaluations/:id/decisions", async (req, res) => {
     res.status(409).json({
       error: {
         code: "DECISION_FAILED",
-        message: error instanceof Error ? error.message : "Decision failed",
+        message: clientMessage(error, "Decision failed"),
       },
     });
   } finally {
@@ -206,7 +216,7 @@ app.post("/api/cases/:id/evaluations", async (req, res) => {
       [req.params.id],
     );
     const evaluationOwner = caseResult.rows[0]?.owner_user_id;
-    if (caseResult.rows[0] && evaluationOwner != null && String(evaluationOwner) !== user.id) {
+    if (caseResult.rows[0] && String(evaluationOwner ?? "") !== user.id) {
       await client.query("ROLLBACK");
       res.status(403).json({
         error: {
@@ -231,7 +241,7 @@ app.post("/api/cases/:id/evaluations", async (req, res) => {
     res.status(500).json({
       error: {
         code: "EVALUATION_FAILED",
-        message: error instanceof Error ? error.message : "Evaluation failed",
+        message: clientMessage(error, "Evaluation failed"),
       },
     });
   } finally {
@@ -268,7 +278,7 @@ app.post(
       res.status(400).json({
         error: {
           code: "IMPORT_PREVIEW_FAILED",
-          message: error instanceof Error ? error.message : "Preview failed",
+          message: clientMessage(error, "Preview failed"),
         },
       });
     }
@@ -318,7 +328,7 @@ app.post("/api/imports/:batchId/commit", async (req, res) => {
     res.status(409).json({
       error: {
         code: "IMPORT_COMMIT_FAILED",
-        message: error instanceof Error ? error.message : "Commit failed",
+        message: clientMessage(error, "Commit failed"),
       },
     });
   } finally {
@@ -333,4 +343,12 @@ app.get("/api/health", async (_req, res) =>
   }),
 );
 
-app.listen(3000, () => console.log("API listening at http://localhost:3000"));
+app.get("/how-it-is-built", (_req, res) => {
+  res.sendFile("index.html", { root: "public" });
+});
+
+export default app;
+
+if (!process.env.VERCEL) {
+  app.listen(3000, () => console.log("API listening at http://localhost:3000"));
+}

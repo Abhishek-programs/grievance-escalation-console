@@ -1,8 +1,22 @@
-# Civic Grievance Escalation Console
+# Grievance Escalation Console
 
-Imports fictional civic complaints from WhatsApp, website, Facebook, and spreadsheet CSV exports. Each file is staged for review, then selected rows are committed to PostgreSQL as cases. A deadline calculator counts working days in Asia/Kathmandu and skips public holidays.
+A review-first local console for traceable grievance imports, policy recommendations, supervisor decisions, and follow-up work.
 
-The running app is an Express API. Node executes the TypeScript sources directly.
+## Architecture
+
+```mermaid
+flowchart LR
+  CSV[Four fictional CSV exports] --> Preview[Import preview and review]
+  Preview --> Commit[Transactional case commit]
+  Commit --> DB[(PostgreSQL)]
+  DB --> Policy[Versioned Nepal policy engine]
+  Policy --> Decision[Supervisor decision]
+  Decision --> FollowUp[Follow-up action]
+  DB --> API[Express and TypeScript API]
+  API --> UI[React operations dashboard]
+```
+
+The API and audit writes use one PostgreSQL database. React reads paginated queues and complete evidence through REST endpoints. Node runs the TypeScript sources directly.
 
 ## Requirements
 
@@ -25,9 +39,10 @@ The database is `grievances` on `localhost:5432`, user `app`, password `local-de
 
 ```bash
 npm run dev:server
+npm run dev:web
 ```
 
-The API listens at `http://localhost:3000`.
+The API listens at `http://localhost:3000`. The dashboard is the Vite dev server, and it proxies `/api` to that API.
 
 `GET /api/health` returns `{ "status": "ok", "database": true }` when Postgres answers.
 
@@ -71,11 +86,29 @@ node server/scripts/preview-demo.ts
 
 Generated files land in `data/exports/` and are gitignored, except `whatsapp-sample.csv`.
 
-## Deadlines
+## Dataset provenance
 
-`server/src/policy.ts` walks forward from the received date and counts working days. Public holidays and non-working weekdays are recorded in the trace and do not count. A missing or malformed date returns `NEEDS_CLARIFICATION`. With `DUE_THROUGH_END_OF_DAY`, the case becomes overdue on the day after the deadline.
+- All people, departments, contacts, source URLs, and grievance records are fictional.
+- `server/scripts/generate-data.ts` creates 200 reproducible records across WhatsApp, website, Facebook, and spreadsheet exports.
+- Deliberate edge cases include missing fields, mixed date formats, ambiguous statuses, repeated source IDs, and similar complaints.
+- Original values remain attached to import rows and committed cases.
 
-Migration `003_policy.sql` seeds policy `NP-GRIEVANCE-2026-V1`: Monday–Friday, five working days, and selected Dashain and Tihar dates in 2026. Wiring that stored policy into case deadlines is still ahead of the API.
+## Policy, decisions, and the dashboard
+
+`POST /api/cases/:id/evaluations` loads policy `NP-GRIEVANCE-2026-V1` and appends a recommendation. `POST /api/evaluations/:id/decisions` records a supervisor decision and opens the follow-up action in the same transaction. `GET /api/dashboard` serves the queue counts and a page of cases. `GET /api/cases/:id/evidence` returns the case, evaluations, decisions, follow-ups, and audit events.
+
+## Policy assumptions
+
+- Timezone: `Asia/Kathmandu`.
+- Workweek: Monday through Friday. Saturday and Sunday are the weekly holidays.
+- Demonstration deadline: five working days after receipt.
+- Deadline inclusivity: due through the end of the calculated local date.
+- Missing or unsupported received dates produce `NEEDS_CLARIFICATION`.
+- Selected 2083 holidays are demonstration seeds. Production deployments must load the complete applicable Ministry of Home Affairs calendar.
+
+## Source
+
+- Nepal Ministry of Home Affairs: https://moha.gov.np/en/page/government-and-public-holidays-in-2083
 
 ```bash
 npm test
@@ -94,4 +127,5 @@ web/src/components/
 web/src/types/
 web/vite.config.ts
 data/exports/whatsapp-sample.csv
+docs/openapi.yaml                  HTTP contract
 ```

@@ -1,0 +1,57 @@
+openapi: 3.1.1
+info:
+  title: Grievance Escalation Console API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+paths:
+  /api/imports/preview:
+    post:
+      summary: Stage a CSV and return grouped review outcomes.
+      responses:
+        "201": { description: Review batch created. }
+        "400": { description: Invalid source or CSV. }
+  /api/imports/{batchId}/commit:
+    post:
+      summary: Commit explicitly selected staged rows.
+      responses:
+        "201": { description: Selected cases committed. }
+        "409": { description: Commit conflict or changed source. }
+  /api/cases/{id}/evaluations:
+    post:
+      summary: Append a policy evaluation.
+      responses:
+        "201": { description: Evaluation appended. }
+  /api/evaluations/{id}/decisions:
+    post:
+      summary: Record a supervisor decision transactionally.
+      responses:
+        "201": { description: Decision and operational outcome committed. }
+  /api/dashboard:
+    get:
+      summary: List actionable metrics and paginated cases.
+      parameters:
+        - { in: query, name: bucket, schema: { type: string } }
+        - { in: query, name: departmentId, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200": { description: Metrics and filtered cases. }
+  /api/cases/{id}/evidence:
+    get:
+      summary: Return source, policy, decision, follow-up, and audit evidence.
+      responses:
+        "200": { description: Complete traceable case evidence. }
+        "404": { description: Case not found. }
+  /api/health:
+    get:
+      summary: Check API and database availability.
+      responses:
+        "200": { description: Service is healthy. }
+components:
+  schemas:
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error: { type: object, required: [code, message] }

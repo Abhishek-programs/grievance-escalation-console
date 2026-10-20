@@ -19,6 +19,11 @@ const pool = new Pool({
     "postgres://app:local-development-only@localhost:5432/grievances",
 });
 
+app.get("/openapi.yaml", (_req, res) => {
+  // Serve the versioned API contract from the repository.
+  res.sendFile("docs/openapi.yaml", { root: process.cwd() });
+});
+
 app.get("/api/dashboard", async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));

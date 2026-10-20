@@ -166,7 +166,7 @@ export const buildNotes = [
       {
         heading: "What I would not pretend this is",
         body: [
-          "The deploy does not migrate. I run npm run migrate with the direct URL when the schema changes, then deploy the code that expects those columns. The holiday list is still a slice. The staff directory is still fictional. The email code proves an inbox and does not prove a staff identity. The part that is already in the shape I would keep is the transaction around a decision, the view the queue reads, and the owner on the case.",
+          "After the tests pass on main, that same workflow applies any new file in server/migrations to Neon through the direct URL. Files already recorded in schema_migrations are skipped. A pull request never touches Neon. Vercel still deploys from the push, so a migration and the code that uses it can land a few seconds apart. The holiday list is still a slice. The staff directory is still fictional. The email code proves an inbox and does not prove a staff identity. The part that is already in the shape I would keep is the transaction around a decision, the view the queue reads, and the owner on the case.",
         ],
       },
     ],

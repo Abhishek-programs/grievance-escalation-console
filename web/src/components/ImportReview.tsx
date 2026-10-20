@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { request } from "../api.ts";
+import { guestCommit, guestPreview } from "../guest-desk.ts";
 import { badgeVariant, formatDate, humanize } from "../format.ts";
 import {
   blockedOutcomes,
@@ -37,10 +38,12 @@ const sources = [
 
 export function ImportReview({
   email,
+  browser,
   onSignedIn,
   onCommitted,
 }: {
   email: string | null;
+  browser: boolean;
   onSignedIn: (email: string) => void;
   onCommitted: () => void;
 }): React.ReactElement {
@@ -54,6 +57,14 @@ export function ImportReview({
   const [notice, setNotice] = useState<CommitResult | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => (preview ? importRows(preview) : []), [preview]);
+  const canWrite = Boolean(email) || browser;
+
+  useEffect(() => {
+    if (!email) return;
+    setPreview(null);
+    setNotice(null);
+    setSelected(new Set());
+  }, [email]);
 
   function toggle(id: string, checked: boolean) {
     setSelected((current) => {
@@ -70,6 +81,20 @@ export function ImportReview({
     setError("");
     setNotice(null);
     try {
+      if (browser) {
+        const result = guestPreview(file.name, await file.text());
+        setPreview(result);
+        const alreadyDone = new Set(result.committedRowIds ?? []);
+        setDoneIds(alreadyDone);
+        setSelected(
+          new Set(
+            importRows(result)
+              .filter((row) => row.outcome === "VALID" && !alreadyDone.has(String(row.id)))
+              .map((row) => String(row.id)),
+          ),
+        );
+        return;
+      }
       const result = await request<ImportPreview>("/api/imports/preview", {
         method: "POST",
         headers: {
@@ -101,14 +126,27 @@ export function ImportReview({
     setBusy("commit");
     setError("");
     try {
+      const chosenIds = chosen.map((row) => String(row.id));
+      const confirmed = chosen.filter((row) => row.outcome !== "VALID").map((row) => String(row.id));
+      if (browser) {
+        const result = guestCommit(preview.batchId, chosenIds, confirmed);
+        setNotice(result);
+        setDoneIds((current) => new Set([...current, ...result.committedRowIds]));
+        setSelected((current) => {
+          const next = new Set(current);
+          for (const rowId of result.committedRowIds) next.delete(rowId);
+          return next;
+        });
+        if (result.committedCaseIds.length > 0) onCommitted();
+        resultRef.current?.scrollIntoView({ block: "nearest" });
+        return;
+      }
       const result = await request<CommitResult>(`/api/imports/${preview.batchId}/commit`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          rowIds: chosen.map((row) => String(row.id)),
-          confirmedRowIds: chosen
-            .filter((row) => row.outcome !== "VALID")
-            .map((row) => String(row.id)),
+          rowIds: chosenIds,
+          confirmedRowIds: confirmed,
         }),
       });
       setNotice(result);
@@ -139,7 +177,9 @@ export function ImportReview({
           <span>
             <CardTitle className="font-display">Import complaints</CardTitle>
             <CardDescription>
-              Preview a file and commit it. The columns tell the desk which source it came from.
+              {browser
+                ? "Preview a file and commit it in this browser. The columns tell the desk which source it came from."
+                : "Preview a file and commit it. The columns tell the desk which source it came from."}
             </CardDescription>
           </span>
           <span className="text-sm text-primary">{open ? "Hide" : "Show"}</span>
@@ -179,7 +219,7 @@ export function ImportReview({
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />
           </div>
-          <Button type="button" disabled={!file || !email || busy !== ""} onClick={stage}>
+          <Button type="button" disabled={!file || !canWrite || busy !== ""} onClick={stage}>
             {busy === "preview" ? "Staging…" : "Preview"}
           </Button>
         </div>
@@ -281,7 +321,7 @@ export function ImportReview({
                   )}
                 </div>
               )}
-              <Button type="button" disabled={selected.size === 0 || !email || busy !== ""} onClick={commit}>
+              <Button type="button" disabled={selected.size === 0 || !canWrite || busy !== ""} onClick={commit}>
                 {busy === "commit" ? "Committing…" : `Commit ${selected.size} selected`}
               </Button>
             </div>

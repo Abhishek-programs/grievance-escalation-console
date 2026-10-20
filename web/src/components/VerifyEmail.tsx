@@ -52,7 +52,7 @@ export function VerifyEmail({
   return (
     <div className="space-y-3 rounded-[17px] border border-border p-4">
       <p className="text-sm leading-relaxed">
-        Enter your email. After the code, this desk shows only the complaints and decisions for that address.
+        The sample stays in this browser. Enter your email when you want a desk that keeps only that address’s complaints.
       </p>
       <div className="space-y-2">
         <Label htmlFor="sign-in-email">Email</Label>

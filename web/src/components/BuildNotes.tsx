@@ -22,8 +22,8 @@ export const buildNotes = [
         heading: "What a request is allowed to touch",
         body: [
           "Public routes are the health check, the sample zip, and asking for a sign-in code. Everything that reads or writes a complaint goes through the session. userFromRequest hashes the desk_session cookie and loads the user only when sessions.token_hash matches and expires_at is still in the future. The raw token is never stored.",
-          "The queue query is owner_user_id equal to that user id. With no session the predicate is FALSE, so the counts and the table are empty rather than the shared directory. Opening a case repeats the same predicate in the WHERE clause before any evaluation, decision, follow-up, or audit row is loaded. A policy check and a supervisor decision start a transaction, lock the case or the evaluation, and refuse the write unless the owner is the session. An import commit does the same on import_batches.",
-          "Another address therefore gets an empty desk and a not-found. Guessing a numeric id does not reveal that the row exists. The directory of departments and staff is not tenant data. It is the fictional office the recommendation is allowed to name.",
+          "The queue query is owner_user_id equal to that user id. With no session the predicate is FALSE, so the API returns an empty queue rather than the shared directory. The page then shows a sample desk kept in localStorage. Imports, deadline checks, and decisions on that sample stay in the browser and are never sent to Postgres. Opening a case repeats the owner predicate in the WHERE clause before any evaluation, decision, follow-up, or audit row is loaded. A policy check and a supervisor decision start a transaction, lock the case or the evaluation, and refuse the write unless the owner is the session. An import commit does the same on import_batches.",
+          "Another address therefore gets a not-found from the API. Guessing a numeric id does not reveal that the row exists. The directory of departments and staff is not tenant data. It is the fictional office the recommendation is allowed to name.",
         ],
       },
       {

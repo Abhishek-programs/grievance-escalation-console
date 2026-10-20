@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router";
 import { bucketDescriptions, bucketLabels, request } from "./api.ts";
 import { BuildLink, BuildPage } from "./components/BuildPage.tsx";
 import { BuildNote, buildDocument } from "./components/BuildNotes.tsx";
+import { guestDashboard, guestDecide, guestEvaluate, guestEvidence } from "./guest-desk.ts";
 import { CaseTable } from "./components/CaseTable.tsx";
 import { DeskHeader } from "./components/DeskHeader.tsx";
 import { EvidenceDrawer } from "./components/EvidenceDrawer.tsx";
@@ -24,6 +25,7 @@ export default function App() {
   const [bucket, setBucket] = useState("open");
   const [page, setPage] = useState(1);
   const [email, setEmail] = useState<string | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [dashboard, setDashboard] = useState<Dashboard>({
     metrics: {},
     cases: { items: [], page: 1, pageSize, total: 0 },
@@ -64,7 +66,8 @@ export default function App() {
   useEffect(() => {
     request<{ email: string | null }>("/api/auth/session", { method: "GET" })
       .then((data) => setEmail(data.email))
-      .catch(() => setEmail(null));
+      .catch(() => setEmail(null))
+      .finally(() => setSessionReady(true));
   }, []);
 
   useEffect(() => {
@@ -74,7 +77,12 @@ export default function App() {
   }, [refreshToken]);
 
   useEffect(() => {
-    if (pathname !== "/") return;
+    if (pathname !== "/" || !sessionReady) return;
+    if (!email) {
+      setDashboard(guestDashboard(bucket, page, pageSize));
+      setLoading(false);
+      return;
+    }
     let active = true;
     setLoading(true);
     request<Dashboard>(
@@ -95,11 +103,19 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [bucket, page, refreshToken, pathname, email]);
+  }, [bucket, page, refreshToken, pathname, email, sessionReady]);
+
+  const browser = sessionReady && !email;
 
   const loadEvidence = useCallback(async (id: string) => {
+    if (!email) {
+      const local = guestEvidence(id);
+      if (!local) throw new Error("That complaint is not in this browser.");
+      setEvidence(local);
+      return;
+    }
     setEvidence(await request<IEvidence>(`/api/cases/${id}/evidence`, { method: "GET" }));
-  }, []);
+  }, [email]);
 
   async function openEvidence(id: string) {
     try {
@@ -115,6 +131,10 @@ export default function App() {
     setCaseId(null);
     setEvidence(null);
   }, []);
+
+  useEffect(() => {
+    closeEvidence();
+  }, [email, closeEvidence]);
 
   async function refreshEvidence() {
     setRefreshToken((value) => value + 1);
@@ -140,6 +160,7 @@ export default function App() {
             <DeskHeader
               health={health}
               email={email}
+              browser={browser}
               dark={dark}
               onToggleTheme={toggleTheme}
               onSignOut={() => {
@@ -150,6 +171,7 @@ export default function App() {
               {error && <Alert>{error}</Alert>}
               <ImportReview
                 email={email}
+                browser={browser}
                 onSignedIn={(next) => {
                   setEmail(next);
                   setRefreshToken((value) => value + 1);
@@ -174,6 +196,15 @@ export default function App() {
               onSignedIn={setEmail}
               onClose={closeEvidence}
               onChanged={refreshEvidence}
+              onBrowserAction={
+                browser
+                  ? async (action, input) => {
+                      if (!caseId) return;
+                      if (action === "evaluate") guestEvaluate(caseId);
+                      else guestDecide(caseId, input.decision, input.reason);
+                    }
+                  : undefined
+              }
             />
           </div>
         }

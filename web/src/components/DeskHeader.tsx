@@ -3,12 +3,14 @@ import { ThemeToggle } from "./ThemeToggle.tsx";
 export function DeskHeader({
   health,
   email,
+  browser = false,
   dark,
   onToggleTheme,
   onSignOut,
 }: {
   health: boolean | null;
   email: string | null;
+  browser?: boolean;
   dark: boolean;
   onToggleTheme: () => void;
   onSignOut: () => void;
@@ -40,7 +42,7 @@ export function DeskHeader({
               </>
             ) : (
               <p className="text-[11px] text-muted-foreground">
-                Sign in to see your complaints
+                {browser ? "Saved in this browser" : "Checking sign-in…"}
               </p>
             )}
             <p className="text-[11px] text-muted-foreground">{database}</p>
@@ -53,8 +55,9 @@ export function DeskHeader({
           Grievance desk
         </h1>
         <p className="mt-4 max-w-[690px] text-sm leading-[1.9] text-muted-foreground">
-          Import a complaint, check it against the deadline, and see who should
-          receive it. The cases are fictional. This desk is a portfolio piece.
+          {browser
+            ? "The sample complaints are already in this browser. Import another file, check a deadline, or record a decision. None of that is written to the database."
+            : "Import a complaint, check it against the deadline, and see who should receive it. The cases are fictional. This desk is a portfolio piece."}
         </p>
       </div>
     </header>

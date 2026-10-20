@@ -24,12 +24,14 @@ export function EvidenceDrawer({
   onSignedIn,
   onClose,
   onChanged,
+  onBrowserAction,
 }: {
   evidence: IEvidence | null;
   email: string | null;
   onSignedIn: (email: string) => void;
   onClose: () => void;
   onChanged: () => Promise<void>;
+  onBrowserAction?: (action: "evaluate" | "decide", input: { decision: DecisionKind; reason: string }) => Promise<void>;
 }): React.ReactElement {
   const [decision, setDecision] = useState<DecisionKind>("APPROVED");
   const [reason, setReason] = useState("");
@@ -44,7 +46,7 @@ export function EvidenceDrawer({
 
   async function evaluate() {
     if (!evidence) return;
-    if (!email) {
+    if (!email && !onBrowserAction) {
       setPending("evaluate");
       setError("");
       return;
@@ -52,7 +54,8 @@ export function EvidenceDrawer({
     setBusy("evaluate");
     setError("");
     try {
-      await request(`/api/cases/${evidence.case.id}/evaluations`, { method: "POST" });
+      if (onBrowserAction) await onBrowserAction("evaluate", { decision, reason });
+      else await request(`/api/cases/${evidence.case.id}/evaluations`, { method: "POST" });
       await onChanged();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Evaluation failed");
@@ -63,7 +66,7 @@ export function EvidenceDrawer({
 
   async function submitDecision() {
     if (!latest?.id) return;
-    if (!email) {
+    if (!email && !onBrowserAction) {
       setPending("decide");
       setError("");
       return;
@@ -71,6 +74,12 @@ export function EvidenceDrawer({
     setBusy("decide");
     setError("");
     try {
+      if (onBrowserAction) {
+        await onBrowserAction("decide", { decision, reason });
+        setReason("");
+        await onChanged();
+        return;
+      }
       await request(`/api/evaluations/${latest.id}/decisions`, {
         method: "POST",
         headers: { "content-type": "application/json" },

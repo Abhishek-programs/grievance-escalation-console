@@ -1,17 +1,26 @@
 import type { ICaseTable, ICaseTableItem } from "../types/case-table.ts";
-import { badgeVariant, formatDate, humanize } from "../format.ts";
-import { Badge } from "./ui/badge.tsx";
+import { humanize, policyTiming } from "../format.ts";
 import { Button } from "./ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.tsx";
 
+const outcomeTone: Record<string, string> = {
+  ESCALATE: "bg-(--red-bg) text-(--red)",
+  MONITOR: "bg-(--green-bg) text-(--green)",
+  NEEDS_CLARIFICATION: "bg-(--amber-bg) text-(--amber)",
+  REJECTED: "bg-(--red-bg) text-(--red)",
+  APPROVED: "bg-(--green-bg) text-(--green)",
+};
+
 export function CaseTable({
   result,
+  title,
   loading,
   onOpen,
   onPage,
 }: {
   result: ICaseTable;
+  title: string;
   loading: boolean;
   onOpen: (id: string) => void;
   onPage: (page: number) => void;
@@ -20,9 +29,9 @@ export function CaseTable({
   const from = result.total === 0 ? 0 : (result.page - 1) * result.pageSize + 1;
   const to = Math.min(result.page * result.pageSize, result.total);
   return (
-    <Card aria-busy={loading}>
+    <Card aria-busy={loading} className="shadow-(--shadow)">
       <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>Cases</CardTitle>
+        <CardTitle className="font-display">{title}</CardTitle>
         <p className="text-sm text-muted-foreground">
           {loading ? "Loading queue…" : `${from}–${to} of ${result.total}`}
         </p>
@@ -30,49 +39,66 @@ export function CaseTable({
       <CardContent>
         {result.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            {loading ? "Loading cases…" : "No cases in this queue."}
+            {loading ? "Loading complaints…" : "No complaints in this queue."}
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Case</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Recommendation</TableHead>
-                <TableHead>Follow-up</TableHead>
+                <TableHead>Complaint</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Policy check</TableHead>
+                <TableHead>Decision</TableHead>
+                <TableHead>Forward to</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {result.items.map((item: ICaseTableItem) => (
-                <TableRow key={item.id} className="cursor-pointer" onClick={() => onOpen(item.id)}>
-                  <TableCell className="font-medium">{item.title}</TableCell>
+                <TableRow key={item.id}>
                   <TableCell>
-                    <Badge variant={badgeVariant(item.normalized_status)}>
-                      {humanize(item.normalized_status)}
-                    </Badge>
+                    <p className="font-medium">{item.title}</p>
+                    <p className="text-muted-foreground">{humanize(item.normalized_status)}</p>
                   </TableCell>
-                  <TableCell className={item.department_name ? undefined : "text-amber-700"}>
-                    {item.department_name ?? "Missing"}
+                  <TableCell className="max-w-xs text-muted-foreground">
+                    {item.description || "No description"}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={badgeVariant(item.recommendation_outcome)}>
-                      {humanize(item.recommendation_outcome, "Not evaluated")}
-                    </Badge>
+                    <PolicyCheck item={item} />
                   </TableCell>
-                  <TableCell>{formatDate(item.follow_up_due_date)}</TableCell>
                   <TableCell>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onOpen(item.id);
-                      }}
-                    >
-                      Open
+                    {item.decision ? (
+                      <div className="space-y-1">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${outcomeTone[item.decision] ?? "bg-secondary text-secondary-foreground"}`}>
+                          {humanize(item.decision)}
+                        </span>
+                        {item.decision_reason && <p>{item.decision_reason}</p>}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">No decision yet</p>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {item.employee_name ? (
+                      <>
+                        <p className="font-medium">{item.employee_name}</p>
+                        <p className="text-muted-foreground">
+                          {item.employee_role}
+                          {item.department_name ? ` · ${item.department_name}` : ""}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-medium text-(--amber)">No officer matched</p>
+                        <p className="text-muted-foreground">
+                          {item.department_name ?? "Department still needed"}
+                        </p>
+                      </>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Button type="button" size="sm" onClick={() => onOpen(item.id)}>
+                      View complaint
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -93,5 +119,18 @@ export function CaseTable({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function PolicyCheck({ item }: { item: ICaseTableItem }) {
+  const outcome = item.recommendation_outcome;
+  return (
+    <div className="space-y-1">
+      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${outcome ? outcomeTone[outcome] ?? "bg-secondary text-secondary-foreground" : "bg-secondary text-secondary-foreground"}`}>
+        {humanize(outcome, "Not checked")}
+      </span>
+      <p>{item.recommended_next_step ?? "Import runs the policy check."}</p>
+      <p className="text-muted-foreground">{policyTiming(item.calculated_deadline, outcome)}</p>
+    </div>
   );
 }

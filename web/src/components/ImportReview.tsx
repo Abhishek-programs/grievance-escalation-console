@@ -14,9 +14,26 @@ import { Button } from "./ui/button.tsx";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.tsx";
 import { Checkbox } from "./ui/checkbox.tsx";
 import { Label } from "./ui/label.tsx";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx";
 
-const platforms = ["whatsapp", "website", "facebook", "spreadsheet"] as const;
+const sources = [
+  {
+    name: "WhatsApp",
+    columns: "message_id, message, notes, sent_at, state",
+    sample: "/api/samples/whatsapp.csv",
+  },
+  {
+    name: "Website",
+    columns: "submission_id, subject, description, received_on, status",
+  },
+  {
+    name: "Facebook",
+    columns: "post_ref, post_text, extra, created, moderation_state",
+  },
+  {
+    name: "Spreadsheet",
+    columns: "complaint_no, complaint, remarks, date_received, case_status",
+  },
+];
 
 export function ImportReview({
   actorId,
@@ -25,7 +42,7 @@ export function ImportReview({
   actorId: string;
   onCommitted: () => void;
 }): React.ReactElement {
-  const [platform, setPlatform] = useState<(typeof platforms)[number]>("whatsapp");
+  const [open, setOpen] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -55,7 +72,6 @@ export function ImportReview({
         method: "POST",
         headers: {
           "content-type": "text/csv",
-          "x-source-platform": platform,
           "x-source-name": file.name,
           "x-actor-id": actorId,
         },
@@ -112,31 +128,42 @@ export function ImportReview({
   }
 
   return (
-    <Card>
+    <Card className="shadow-(--shadow)">
       <CardHeader>
-        <CardTitle>Import review</CardTitle>
-        <CardDescription>
-          Stage a WhatsApp, website, Facebook, or spreadsheet CSV, then commit the rows you accept.
-        </CardDescription>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span>
+            <CardTitle className="font-display">Import complaints</CardTitle>
+            <CardDescription>
+              Preview a file and commit it. The columns tell the desk which source it came from.
+            </CardDescription>
+          </span>
+          <span className="text-sm text-primary">{open ? "Hide" : "Show"}</span>
+        </button>
       </CardHeader>
-      <CardContent className="space-y-4">
+      {open && <CardContent className="space-y-4">
         {error && <Alert>{error}</Alert>}
-        <div className="grid gap-4 sm:grid-cols-[12rem_1fr_auto] sm:items-end">
-          <div className="space-y-2">
-            <Label>Platform</Label>
-            <Select value={platform} onValueChange={(value) => setPlatform(value as (typeof platforms)[number])}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {platforms.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {humanize(item)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <section className="space-y-2">
+          <h3 className="font-medium">You can import from these sources</h3>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {sources.map((source) => (
+              <li key={source.name} className="rounded-md border p-3 text-sm">
+                <p className="font-medium">{source.name}</p>
+                <p className="text-muted-foreground">{source.columns}</p>
+                {source.sample && (
+                  <a className="text-primary underline" href={source.sample} download>
+                    Download a WhatsApp sample
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+        <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
           <div className="space-y-2">
             <Label htmlFor="csv-file">CSV file</Label>
             <input
@@ -161,13 +188,14 @@ export function ImportReview({
         {preview?.batchId && (
           <>
             <div className="flex flex-wrap gap-2">
+              {preview.sourcePlatform && <Badge>Read as {humanize(preview.sourcePlatform)}</Badge>}
               {Object.entries(preview.counts).map(([key, count]) => (
                 <Badge key={key} variant="secondary">
                   {humanize(key)} {count}
                 </Badge>
               ))}
             </div>
-            <div className="overflow-auto rounded-lg border">
+            <div className="max-h-64 overflow-auto rounded-lg border">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-left text-muted-foreground">
                   <tr>
@@ -247,7 +275,7 @@ export function ImportReview({
             </div>
           </>
         )}
-      </CardContent>
+      </CardContent>}
     </Card>
   );
 }

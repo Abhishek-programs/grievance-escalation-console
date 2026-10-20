@@ -1,8 +1,8 @@
 import express from "express";
 import { Pool } from "pg";
-import { commitSelectedRows, previewImport, type Platform } from "./import-service.ts";
-import { findDirectory, recommend } from "./recommendation.ts";
-import type { PolicySnapshot } from "./policy.ts";
+import { resolve } from "node:path";
+import { commitSelectedRows, detectPlatform, previewImport } from "./import-service.ts";
+import { applyPolicyCheck } from "./evaluation.ts";
 import { recordDecision, type DecisionKind } from "./decision-service.ts";
 import {
   caseEvidence,
@@ -98,71 +98,12 @@ app.post("/api/evaluations/:id/decisions", async (req, res) => {
   }
 });
 
-async function loadPolicy(client: any): Promise<PolicySnapshot> {
-  // Load one complete snapshot for the evaluation transaction.
-  const result = await client.query(
-    `SELECT p.*,COALESCE(json_agg(json_build_object('date',h.holiday_date::text,'name',h.name,'sourceUrl',h.source_url)) FILTER (WHERE h.id IS NOT NULL),'[]') AS holidays FROM policy_configs p LEFT JOIN calendar_holidays h ON h.policy_id=p.id GROUP BY p.id ORDER BY p.effective_from DESC LIMIT 1`,
-  );
-  const row = result.rows[0];
-  if (!row) throw new Error("No policy configuration found");
-  return {
-    policyVersion: row.policy_version,
-    timezone: row.timezone,
-    workingIsoDays: row.working_iso_days,
-    holidays: row.holidays,
-    allowedWorkingDays: row.allowed_working_days,
-    deadlineInclusivity: row.deadline_inclusivity,
-    missingDateBehavior: row.missing_date_behavior,
-  };
-}
-
-async function insertEvaluation(client: any, result: any): Promise<string> {
-  const evaluatedAt = new Date().toISOString();
-  const policyRow = await client.query(
-    "SELECT id FROM policy_configs WHERE policy_version=$1",
-    [result.inputFacts.policy.policyVersion],
-  );
-  const inserted = await client.query(
-    `INSERT INTO evaluations(case_id,policy_id,policy_version,evaluated_at,rule_id,input_facts,deadline_calculation,calculated_deadline,recommendation_outcome,recommended_next_step,recommendation_reason,recommended_department_id,suggested_employee_id,next_follow_up_deadline) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
-    [
-      result.inputFacts.caseId,
-      policyRow.rows[0].id,
-      result.inputFacts.policy.policyVersion,
-      evaluatedAt,
-      result.ruleId,
-      result.inputFacts,
-      result.deadlineCalculation,
-      result.calculatedDeadline,
-      result.outcome,
-      result.nextStep,
-      result.reason,
-      result.departmentId,
-      result.suggestedEmployeeId,
-      result.nextFollowUpDeadline,
-    ],
-  );
-  const evaluationId = String(inserted.rows[0].id);
-  await client.query(
-    `INSERT INTO audit_events(entity_type,entity_id,event_type,actor_id,event_time,before_values,after_values,metadata) VALUES('case',$1,'POLICY_EVALUATED','policy-engine',$2,NULL,$3,$4)`,
-    [
-      result.inputFacts.caseId,
-      evaluatedAt,
-      { evaluationId, recommendation: result.outcome },
-      {
-        ruleId: result.ruleId,
-        policyVersion: result.inputFacts.policy.policyVersion,
-      },
-    ],
-  );
-  return evaluationId;
-}
-
 app.post("/api/cases/:id/evaluations", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const caseResult = await client.query(
-      "SELECT id,title,description,received_date::text,normalized_status FROM cases WHERE id=$1 FOR UPDATE",
+      "SELECT id FROM cases WHERE id=$1 FOR UPDATE",
       [req.params.id],
     );
     if (!caseResult.rows[0]) {
@@ -172,27 +113,9 @@ app.post("/api/cases/:id/evaluations", async (req, res) => {
         .json({ error: { code: "CASE_NOT_FOUND", message: "Case not found" } });
       return;
     }
-    const policy = await loadPolicy(client);
-    const row = caseResult.rows[0];
-    const facts = {
-      caseId: String(row.id),
-      title: row.title,
-      description: row.description,
-      receivedDate: row.received_date,
-      normalizedStatus: row.normalized_status,
-      asOfDate: "2026-10-23",
-    };
-    const candidate = await findDirectory(client, row.title, row.description);
-    const result = recommend(facts, policy, candidate);
-    const evaluationId = await insertEvaluation(client, result);
-    if (result.departmentId) {
-      await client.query(
-        "UPDATE cases SET department_id=COALESCE(department_id,$1) WHERE id=$2",
-        [result.departmentId, row.id],
-      );
-    }
+    const evaluationId = await applyPolicyCheck(client, String(req.params.id));
     await client.query("COMMIT");
-    res.status(201).json({ evaluationId, ...result });
+    res.status(201).json({ evaluationId });
   } catch (error) {
     await client.query("ROLLBACK");
     res.status(500).json({
@@ -206,30 +129,22 @@ app.post("/api/cases/:id/evaluations", async (req, res) => {
   }
 });
 
+app.get("/api/samples/whatsapp.csv", (_req, res) => {
+  res.download(resolve("data/exports/whatsapp-sample.csv"), "whatsapp-sample.csv");
+});
+
 app.post(
   "/api/imports/preview",
   express.text({ type: "text/csv", limit: "512kb" }),
   async (req, res) => {
     try {
-      const platform = String(
-        req.headers["x-source-platform"] ?? "",
-      ) as Platform;
-      if (
-        !["whatsapp", "website", "facebook", "spreadsheet"].includes(platform)
-      ) {
-        res.status(400).json({
-          error: {
-            code: "INVALID_PLATFORM",
-            message: "x-source-platform is required",
-          },
-        });
-        return;
-      }
+      const csv = String(req.body);
+      const platform = detectPlatform(csv);
       const result = await previewImport(
         pool,
         platform,
         String(req.headers["x-source-name"] ?? "upload.csv"),
-        String(req.body),
+        csv,
         String(req.headers["x-actor-id"] ?? "import-reviewer"),
       );
       res.status(201).json(result);

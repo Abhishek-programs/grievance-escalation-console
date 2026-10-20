@@ -12,6 +12,7 @@ export const bucketLabels = {
   missingDepartment: "Missing Department",
   unassignedEmployee: "Unassigned Employee",
   waitingOnTeam: "Waiting on Team",
+  rejected: "Rejected",
 };
 
 export const bucketDescriptions: Record<keyof typeof bucketLabels, string> = {
@@ -20,4 +21,5 @@ export const bucketDescriptions: Record<keyof typeof bucketLabels, string> = {
   missingDepartment: "No department is assigned.",
   unassignedEmployee: "A department is set, but nobody owns the case.",
   waitingOnTeam: "A follow-up action is still open.",
+  rejected: "A supervisor rejected the recommendation.",
 };

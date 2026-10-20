@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { parse } from "csv-parse/sync";
 import type { Pool, PoolClient } from "pg";
+import { applyPolicyCheck } from "./evaluation.ts";
 import { findDirectory } from "./recommendation.ts";
 
 export type Platform = "whatsapp" | "website" | "facebook" | "spreadsheet";
@@ -55,6 +56,29 @@ const knownStatuses: Record<string, string> = {
 
 const fingerprint = (text: string) =>
   createHash("sha256").update(text).digest("hex");
+
+const sourceMarkers: Record<Platform, string> = {
+  whatsapp: "message_id",
+  website: "submission_id",
+  facebook: "post_ref",
+  spreadsheet: "complaint_no",
+};
+
+export function detectPlatform(csv: string): Platform {
+  const header = csv.split(/\r?\n/).find((line) => line.trim()) ?? "";
+  const names = new Set(
+    header.split(",").map((column) => column.trim().replaceAll('"', "").toLowerCase()),
+  );
+  const match = (Object.entries(sourceMarkers) as Array<[Platform, string]>).find(
+    ([, marker]) => names.has(marker),
+  );
+  if (!match) {
+    throw new Error(
+      "This file is not a WhatsApp, website, Facebook, or spreadsheet export.",
+    );
+  }
+  return match[0];
+}
 
 const normalizedText = (value: unknown) => String(value ?? "").trim();
 
@@ -215,8 +239,13 @@ async function reviewSummary(pool: Pool, batchId: string) {
     "SELECT import_row_id::text AS id FROM cases WHERE import_batch_id=$1",
     [batchId],
   );
+  const batch = await pool.query(
+    "SELECT source_platform FROM import_batches WHERE id=$1",
+    [batchId],
+  );
   return {
     batchId,
+    sourcePlatform: batch.rows[0]?.source_platform ?? null,
     counts: Object.fromEntries(
       Object.entries(groups).map(([key, value]) => [key, value.length]),
     ),
@@ -330,5 +359,6 @@ async function insertCaseAndAudit(
       { batchId: String(row.batch_id), importRowId: String(row.id) },
     ],
   );
+  await applyPolicyCheck(client, caseId);
   return caseId;
 }

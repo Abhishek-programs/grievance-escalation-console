@@ -24,6 +24,21 @@ export function formatDate(value: string | null | undefined, empty = "None"): st
   return Number.isNaN(date.getTime()) ? value : dateFormat.format(date);
 }
 
+export function policyTiming(
+  deadline: string | null | undefined,
+  outcome: string | null | undefined,
+): string {
+  if (!outcome) return "Not checked";
+  if (!deadline) return "Received date still needed";
+  const day = deadline.slice(0, 10);
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kathmandu",
+  }).format(new Date());
+  if (day < today) return "Past the deadline";
+  if (day === today) return "Due today";
+  return "Inside the deadline";
+}
+
 export function formatTimestamp(value: string | null | undefined): string {
   if (!value) return "None";
   const date = new Date(value);

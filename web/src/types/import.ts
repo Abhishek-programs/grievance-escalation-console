@@ -15,6 +15,7 @@ export interface ImportRow {
 
 export interface ImportPreview {
   batchId?: string;
+  sourcePlatform?: string | null;
   repeatedBatchId?: string;
   counts: Record<string, number>;
   groups?: Record<string, ImportRow[]>;

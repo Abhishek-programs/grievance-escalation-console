@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { DecisionKind } from "./decisions.ts";
 import { request } from "../api.ts";
-import { badgeVariant, formatDate, formatTimestamp, humanize } from "../format.ts";
+import { badgeVariant, formatDate, formatTimestamp, humanize, policyTiming } from "../format.ts";
 import type { IEvidence } from "../types/evidence.ts";
 import { Badge } from "./ui/badge.tsx";
 import { Button } from "./ui/button.tsx";
@@ -106,15 +106,21 @@ export function EvidenceDrawer({
                   </Badge>
                   <p>{latest.recommended_next_step}</p>
                   <p className="text-muted-foreground">{latest.recommendation_reason}</p>
-                  <p>Deadline {formatDate(latest.calculated_deadline)}</p>
+                  <p>{policyTiming(latest.calculated_deadline, latest.recommendation_outcome)}</p>
+                  {latest.calculated_deadline && (
+                    <p className="text-muted-foreground">Counted through {formatDate(latest.calculated_deadline)}</p>
+                  )}
                   {trace.length > 0 && (
-                    <ul className="space-y-1 text-muted-foreground">
-                      {trace.map((entry) => (
-                        <li key={entry.date}>
-                          {formatDate(entry.date)} · {humanize(entry.reason)} · {entry.counted ? "Counted" : "Skipped"}
-                        </li>
-                      ))}
-                    </ul>
+                    <details>
+                      <summary className="cursor-pointer text-muted-foreground">How the days were counted</summary>
+                      <ul className="mt-2 space-y-1 text-muted-foreground">
+                        {trace.map((entry) => (
+                          <li key={entry.date}>
+                            {formatDate(entry.date)} · {humanize(entry.reason)} · {entry.counted ? "Counted" : "Skipped"}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
                   )}
                 </div>
               ) : (

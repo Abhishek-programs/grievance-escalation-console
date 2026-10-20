@@ -8,8 +8,14 @@ export interface ICaseTable {
 export interface ICaseTableItem {
   id: string;
   title: string;
+  description: string | null;
   normalized_status: string;
   department_name: string | null;
+  decision: string | null;
+  decision_reason: string | null;
+  employee_name: string | null;
+  employee_role: string | null;
   recommendation_outcome: string | null;
-  follow_up_due_date: string | null;
+  recommended_next_step: string | null;
+  calculated_deadline: string | null;
 }

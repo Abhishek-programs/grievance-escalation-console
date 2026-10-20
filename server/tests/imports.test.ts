@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { Pool } from "pg";
-import { commitSelectedRows, previewImport } from "../src/import-service.ts";
+import { commitSelectedRows, detectPlatform, previewImport } from "../src/import-service.ts";
 
 const pool = new Pool({
   connectionString:
@@ -16,6 +16,17 @@ beforeEach(async () => {
   await pool.query(
     "TRUNCATE cases, import_batches, import_rows, review_decisions, follow_up_actions, evaluations, audit_events CASCADE;",
   );
+});
+
+test("csv headers choose the source", () => {
+  assert.equal(
+    detectPlatform("message_id,message,notes,sent_at,state\n"),
+    "whatsapp",
+  );
+  assert.equal(detectPlatform('"submission_id","subject","description"\n'), "website");
+  assert.equal(detectPlatform("post_ref,post_text\n"), "facebook");
+  assert.equal(detectPlatform("complaint_no,complaint\n"), "spreadsheet");
+  assert.throws(() => detectPlatform("name,notes\n"), /not a WhatsApp/);
 });
 
 test("changed source records require review", async () => {
@@ -111,6 +122,16 @@ test("a repeated file can commit the rows that are still open", async () => {
       [firstRow.id],
     );
     assert.equal(department.rows[0].code, "WATER");
+    const policy = await client.query(
+      `SELECT e.recommendation_outcome, emp.name
+       FROM cases c
+       JOIN evaluations e ON e.case_id=c.id
+       LEFT JOIN employees emp ON emp.id=c.employee_id
+       WHERE c.import_row_id=$1`,
+      [firstRow.id],
+    );
+    assert.equal(policy.rows[0].recommendation_outcome, "ESCALATE");
+    assert.equal(policy.rows[0].name, "Asha Rai");
   } finally {
     client.release();
   }

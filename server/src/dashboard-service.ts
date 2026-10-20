@@ -7,7 +7,8 @@ export async function dashboardMetrics(pool: Pool) {
     count(*) FILTER (WHERE recommendation_outcome='ESCALATE') AS overdue,
     count(*) FILTER (WHERE department_id IS NULL) AS missing_department,
     count(*) FILTER (WHERE department_id IS NOT NULL AND employee_id IS NULL) AS unassigned_employee,
-    count(*) FILTER (WHERE follow_up_status='OPEN') AS waiting_on_team
+    count(*) FILTER (WHERE follow_up_status='OPEN') AS waiting_on_team,
+    count(*) FILTER (WHERE decision='REJECTED') AS rejected
     FROM case_operational_state`);
   const row = result.rows[0];
 
@@ -17,6 +18,7 @@ export async function dashboardMetrics(pool: Pool) {
     missingDepartment: Number(row.missing_department),
     unassignedEmployee: Number(row.unassigned_employee),
     waitingOnTeam: Number(row.waiting_on_team),
+    rejected: Number(row.rejected),
   };
 }
 
@@ -42,6 +44,7 @@ export async function dashboardCases(
   if (input.bucket === "unassignedEmployee")
     add("department_id IS NOT NULL AND employee_id IS NULL");
   if (input.bucket === "waitingOnTeam") add("follow_up_status='OPEN'");
+  if (input.bucket === "rejected") add("decision='REJECTED'");
   if (input.departmentId)
     add(`department_id=$${values.length + 1}`, input.departmentId);
 

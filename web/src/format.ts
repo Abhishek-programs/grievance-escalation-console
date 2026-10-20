@@ -1,6 +1,9 @@
 export function humanize(value: string | null | undefined, empty = "None"): string {
   if (!value) return empty;
-  const text = value.replaceAll("_", " ").toLowerCase();
+  const text = value
+    .replaceAll("_", " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase();
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
@@ -36,11 +39,13 @@ export function formatTimestamp(value: string | null | undefined): string {
   }).format(date);
 }
 
-export function tone(value: string | null | undefined): string {
-  if (!value) return "chip";
-  if (["RESOLVED", "APPROVED", "COMPLETED"].includes(value)) return "chip good";
-  if (["ESCALATE", "REJECTED", "CANCELLED"].includes(value)) return "chip bad";
-  if (["OPEN", "IN_PROGRESS", "NEEDS_CLARIFICATION", "CLARIFICATION_REQUESTED", "REASSIGNED"].includes(value))
-    return "chip warn";
-  return "chip";
+export function badgeVariant(
+  value: string | null | undefined,
+): "default" | "secondary" | "destructive" | "outline" {
+  if (!value) return "outline";
+  if (["RESOLVED", "APPROVED", "COMPLETED", "VALID"].includes(value)) return "default";
+  if (["ESCALATE", "REJECTED", "CANCELLED", "SOURCE_CHANGE_REVIEW"].includes(value))
+    return "destructive";
+  if (value === "ALREADY_IMPORTED") return "outline";
+  return "secondary";
 }

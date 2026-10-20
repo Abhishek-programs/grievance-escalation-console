@@ -1,5 +1,9 @@
 import type { ICaseTable, ICaseTableItem } from "../types/case-table.ts";
-import { formatDate, humanize, tone } from "../format.ts";
+import { badgeVariant, formatDate, humanize } from "../format.ts";
+import { Badge } from "./ui/badge.tsx";
+import { Button } from "./ui/button.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.tsx";
 
 export function CaseTable({
   result,
@@ -16,80 +20,78 @@ export function CaseTable({
   const from = result.total === 0 ? 0 : (result.page - 1) * result.pageSize + 1;
   const to = Math.min(result.page * result.pageSize, result.total);
   return (
-    <section className="panel" aria-busy={loading}>
-      <div className="panel-head">
-        <h2>Cases</h2>
-        <p>{loading ? "Loading queue…" : `${from}–${to} of ${result.total}`}</p>
-      </div>
-      {result.items.length === 0 ? (
-        <p className="empty">{loading ? "Loading cases…" : "No cases in this queue."}</p>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Case</th>
-                <th>Status</th>
-                <th>Department</th>
-                <th>Recommendation</th>
-                <th>Follow-up</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+    <Card aria-busy={loading}>
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle>Cases</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {loading ? "Loading queue…" : `${from}–${to} of ${result.total}`}
+        </p>
+      </CardHeader>
+      <CardContent>
+        {result.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {loading ? "Loading cases…" : "No cases in this queue."}
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Case</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Recommendation</TableHead>
+                <TableHead>Follow-up</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {result.items.map((item: ICaseTableItem) => (
-                <tr key={item.id} onClick={() => onOpen(item.id)}>
-                  <td>{item.title}</td>
-                  <td>
-                    <span className={tone(item.normalized_status)}>
+                <TableRow key={item.id} className="cursor-pointer" onClick={() => onOpen(item.id)}>
+                  <TableCell className="font-medium">{item.title}</TableCell>
+                  <TableCell>
+                    <Badge variant={badgeVariant(item.normalized_status)}>
                       {humanize(item.normalized_status)}
-                    </span>
-                  </td>
-                  <td className={item.department_name ? undefined : "missing"}>
+                    </Badge>
+                  </TableCell>
+                  <TableCell className={item.department_name ? undefined : "text-amber-700"}>
                     {item.department_name ?? "Missing"}
-                  </td>
-                  <td>
-                    <span className={tone(item.recommendation_outcome)}>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={badgeVariant(item.recommendation_outcome)}>
                       {humanize(item.recommendation_outcome, "Not evaluated")}
-                    </span>
-                  </td>
-                  <td>{formatDate(item.follow_up_due_date)}</td>
-                  <td>
-                    <button
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{formatDate(item.follow_up_due_date)}</TableCell>
+                  <TableCell>
+                    <Button
                       type="button"
+                      size="sm"
+                      variant="outline"
                       onClick={(event) => {
                         event.stopPropagation();
                         onOpen(item.id);
                       }}
                     >
                       Open
-                    </button>
-                  </td>
-                </tr>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
+        )}
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <Button type="button" variant="outline" disabled={result.page <= 1 || loading} onClick={() => onPage(result.page - 1)}>
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {result.page} of {pageCount}
+          </span>
+          <Button type="button" variant="outline" disabled={result.page >= pageCount || loading} onClick={() => onPage(result.page + 1)}>
+            Next
+          </Button>
         </div>
-      )}
-      <div className="pager">
-        <button
-          type="button"
-          disabled={result.page <= 1 || loading}
-          onClick={() => onPage(result.page - 1)}
-        >
-          Previous
-        </button>
-        <span>
-          Page {result.page} of {pageCount}
-        </span>
-        <button
-          type="button"
-          disabled={result.page >= pageCount || loading}
-          onClick={() => onPage(result.page + 1)}
-        >
-          Next
-        </button>
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   );
 }

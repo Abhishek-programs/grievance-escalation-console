@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { Pool } from "pg";
-import { previewImport } from "../src/import-service.ts";
+import { commitSelectedRows, previewImport } from "../src/import-service.ts";
 
 const pool = new Pool({
   connectionString:
@@ -88,9 +88,54 @@ test("byte-identical repeat files return the existing batch", async () => {
     "test-runner",
   );
 
-  assert.equal(repeated.counts.alreadyImported, 1);
-  assert.ok(repeated.repeatedBatchId);
   assert.equal(repeated.repeatedBatchId, firstImport.batchId);
+  assert.equal(repeated.batchId, firstImport.batchId);
+  assert.equal(repeated.groups.valid.length, 1);
+  assert.deepEqual(repeated.committedRowIds, []);
+});
+
+test("a repeated file can commit the rows that are still open", async () => {
+  const testSourceId = `TEST-PARTIAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const uniqueCsv = `${header}\n${testSourceId},Water supply stopped,Fictional test,2026-10-01,open,https://example.invalid/test\n${testSourceId}-B,Clinic queue delay,Fictional test,2026-10-02,open,https://example.invalid/test-b`;
+  const first: any = await previewImport(pool, "website", "partial.csv", uniqueCsv, "test-runner");
+  const [firstRow, secondRow] = first.groups.valid;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const partial = await commitSelectedRows(client, first.batchId, [String(firstRow.id)], new Set(), "test-runner");
+    await client.query("COMMIT");
+    assert.deepEqual(partial.committedRowIds, [String(firstRow.id)]);
+    assert.deepEqual(partial.skipped, []);
+    const department = await client.query(
+      "SELECT d.code FROM cases c JOIN departments d ON d.id=c.department_id WHERE c.import_row_id=$1",
+      [firstRow.id],
+    );
+    assert.equal(department.rows[0].code, "WATER");
+  } finally {
+    client.release();
+  }
+
+  const again: any = await previewImport(pool, "website", "partial.csv", uniqueCsv, "test-runner");
+  assert.deepEqual(again.committedRowIds, [String(firstRow.id)]);
+
+  const retry = await pool.connect();
+  try {
+    await retry.query("BEGIN");
+    const second = await commitSelectedRows(
+      retry,
+      again.batchId,
+      [String(firstRow.id), String(secondRow.id)],
+      new Set(),
+      "test-runner",
+    );
+    await retry.query("COMMIT");
+    assert.deepEqual(second.committedRowIds, [String(secondRow.id)]);
+    assert.equal(second.skipped.length, 1);
+    assert.equal(second.skipped[0].rowId, String(firstRow.id));
+    assert.match(second.skipped[0].reason, /already exists/);
+  } finally {
+    retry.release();
+  }
 });
 
 test.after(async () => {

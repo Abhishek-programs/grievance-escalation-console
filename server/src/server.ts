@@ -1,7 +1,7 @@
 import express from "express";
 import { Pool } from "pg";
-import { previewImport, type Platform } from "./import-service.ts";
-import { departmentCodeFor, recommend } from "./recommendation.ts";
+import { commitSelectedRows, previewImport, type Platform } from "./import-service.ts";
+import { findDirectory, recommend } from "./recommendation.ts";
 import type { PolicySnapshot } from "./policy.ts";
 import { recordDecision, type DecisionKind } from "./decision-service.ts";
 import {
@@ -182,24 +182,15 @@ app.post("/api/cases/:id/evaluations", async (req, res) => {
       normalizedStatus: row.normalized_status,
       asOfDate: "2026-10-23",
     };
-    const code = departmentCodeFor(facts);
-    const directory = code
-      ? await client.query(
-          `SELECT d.id AS department_id,e.id AS employee_id FROM departments d LEFT JOIN LATERAL (SELECT id FROM employees WHERE department_id=d.id AND active ORDER BY escalation_level,id LIMIT 1) e ON TRUE WHERE d.code=$1`,
-          [code],
-        )
-      : { rows: [] };
-    const candidate = directory.rows[0]
-      ? {
-          departmentId: String(directory.rows[0].department_id),
-          departmentCode: code!,
-          employeeId: directory.rows[0].employee_id
-            ? String(directory.rows[0].employee_id)
-            : null,
-        }
-      : null;
+    const candidate = await findDirectory(client, row.title, row.description);
     const result = recommend(facts, policy, candidate);
     const evaluationId = await insertEvaluation(client, result);
+    if (result.departmentId) {
+      await client.query(
+        "UPDATE cases SET department_id=COALESCE(department_id,$1) WHERE id=$2",
+        [result.departmentId, row.id],
+      );
+    }
     await client.query("COMMIT");
     res.status(201).json({ evaluationId, ...result });
   } catch (error) {
@@ -253,50 +244,12 @@ app.post(
   },
 );
 
-async function insertCaseAndAudit(
-  client: any,
-  row: any,
-  actorId: string,
-): Promise<string> {
-  const value = row.proposed_values;
-  const createdAt = new Date().toISOString();
-  const inserted = await client.query(
-    `INSERT INTO cases(source_platform,source_record_id,source_url,import_batch_id,import_row_id,original_values,title,description,received_date,normalized_status,created_at) SELECT b.source_platform,$1,$2,b.id,$3,$4,$5,$6,$7,$8,$9 FROM import_batches b WHERE b.id=$10 ON CONFLICT(source_platform,source_record_id) DO NOTHING RETURNING id`,
-    [
-      row.source_record_id,
-      row.source_url,
-      row.id,
-      row.original_values,
-      value.title,
-      value.description,
-      value.receivedDate,
-      value.normalizedStatus ?? "NEEDS_CLARIFICATION",
-      createdAt,
-      row.batch_id,
-    ],
-  );
-  if (!inserted.rows[0])
-    throw new Error("Source record already exists; review required");
-  const caseId = String(inserted.rows[0].id);
-  await client.query(
-    `INSERT INTO audit_events(entity_type,entity_id,event_type,actor_id,event_time,before_values,after_values,metadata) VALUES('case',$1,'CASE_IMPORTED',$2,$3,NULL,$4,$5)`,
-    [
-      caseId,
-      actorId,
-      createdAt,
-      { caseId, sourceRecordId: row.source_record_id },
-      { batchId: String(row.batch_id), importRowId: String(row.id) },
-    ],
-  );
-  return caseId;
-}
-
 app.post("/api/imports/:batchId/commit", async (req, res) => {
   const actorId = String(req.body.actorId ?? "import-reviewer");
   const rowIds = Array.isArray(req.body.rowIds)
     ? req.body.rowIds.map(String)
     : [];
-  const confirmedRowIds = new Set(
+  const confirmedRowIds = new Set<string>(
     Array.isArray(req.body.confirmedRowIds)
       ? req.body.confirmedRowIds.map(String)
       : [],
@@ -304,33 +257,15 @@ app.post("/api/imports/:batchId/commit", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const rows = await client.query(
-      "SELECT * FROM import_rows WHERE batch_id=$1 AND id=ANY($2::bigint[]) FOR UPDATE",
-      [req.params.batchId, rowIds],
-    );
-    const committed: string[] = [];
-    for (const row of rows.rows) {
-      const allowed =
-        row.outcome === "VALID" || confirmedRowIds.has(String(row.id));
-      if (
-        !allowed ||
-        ["REJECTED", "ALREADY_IMPORTED", "SOURCE_CHANGE_REVIEW"].includes(
-          row.outcome,
-        )
-      )
-        continue;
-      committed.push(await insertCaseAndAudit(client, row, actorId));
-    }
-    await client.query(
-      "UPDATE import_batches SET status='COMMITTED' WHERE id=$1",
-      [req.params.batchId],
+    const result = await commitSelectedRows(
+      client,
+      String(req.params.batchId),
+      rowIds,
+      confirmedRowIds,
+      actorId,
     );
     await client.query("COMMIT");
-    res.status(201).json({
-      batchId: req.params.batchId,
-      committedCaseIds: committed,
-      requested: rowIds.length,
-    });
+    res.status(201).json({ batchId: req.params.batchId, ...result });
   } catch (error) {
     await client.query("ROLLBACK");
     res.status(409).json({

@@ -7,14 +7,17 @@ export interface IEvidence {
 }
 
 export interface IEvidenceEvaluation {
+  id?: string;
   policy_version?: string;
   recommendation_outcome?: string;
   recommended_next_step: string;
   recommendation_reason: string;
   calculated_deadline?: string | null;
+  deadline_calculation?: { trace?: Array<{ date: string; reason: string; counted: boolean }> } | null;
 }
 
 export interface IEvidenceDecision {
+  evaluation_id?: string;
   decision: string;
   reason?: string | null;
   decided_by?: string;
@@ -35,6 +38,7 @@ export interface IEvidenceAudit {
 }
 
 export interface IEvidenceCase {
+  id: string | number;
   title: string;
   description?: string | null;
   received_date?: string | null;

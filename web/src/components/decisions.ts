@@ -1,0 +1,1 @@
+export type DecisionKind = "APPROVED" | "REJECTED" | "REASSIGNED" | "CLARIFICATION_REQUESTED";

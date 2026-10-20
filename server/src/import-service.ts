@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { parse } from "csv-parse/sync";
 import type { Pool, PoolClient } from "pg";
+import { findDirectory } from "./recommendation.ts";
 
 export type Platform = "whatsapp" | "website" | "facebook" | "spreadsheet";
 
@@ -97,11 +98,13 @@ export async function previewImport(
     "SELECT id FROM import_batches WHERE source_fingerprint=$1",
     [sourceHash],
   );
-  if (prior.rows[0])
+  if (prior.rows[0]) {
+    // Reopen the same file so unfinished rows can still be committed.
     return {
+      ...(await reviewSummary(pool, String(prior.rows[0].id))),
       repeatedBatchId: String(prior.rows[0].id),
-      counts: { alreadyImported: rawRows.length },
     };
+  }
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -208,11 +211,124 @@ async function reviewSummary(pool: Pool, batchId: string) {
     if (row.outcome === "SOURCE_CHANGE_REVIEW")
       groups.changedSourceRecords.push(row);
   }
+  const committed = await pool.query(
+    "SELECT import_row_id::text AS id FROM cases WHERE import_batch_id=$1",
+    [batchId],
+  );
   return {
     batchId,
     counts: Object.fromEntries(
       Object.entries(groups).map(([key, value]) => [key, value.length]),
     ),
     groups,
+    committedRowIds: committed.rows.map((row) => String(row.id)),
   };
+}
+
+export async function commitSelectedRows(
+  client: PoolClient,
+  batchId: string,
+  rowIds: string[],
+  confirmedRowIds: Set<string>,
+  actorId: string,
+) {
+  const rows = await client.query(
+    "SELECT * FROM import_rows WHERE batch_id=$1 AND id=ANY($2::bigint[]) FOR UPDATE",
+    [batchId, rowIds],
+  );
+  const committedCaseIds: string[] = [];
+  const committedRowIds: string[] = [];
+  const skipped: { rowId: string; rowNumber: number; reason: string }[] = [];
+  for (const row of rows.rows) {
+    const rowId = String(row.id);
+    const allowed = row.outcome === "VALID" || confirmedRowIds.has(rowId);
+    if (
+      !allowed ||
+      ["REJECTED", "ALREADY_IMPORTED", "SOURCE_CHANGE_REVIEW"].includes(row.outcome)
+    ) {
+      skipped.push({
+        rowId,
+        rowNumber: row.row_number,
+        reason: "This row cannot be committed.",
+      });
+      continue;
+    }
+    await client.query("SAVEPOINT row_commit");
+    try {
+      committedCaseIds.push(await insertCaseAndAudit(client, row, actorId));
+      committedRowIds.push(rowId);
+      await client.query("RELEASE SAVEPOINT row_commit");
+    } catch (error) {
+      await client.query("ROLLBACK TO SAVEPOINT row_commit");
+      await client.query("RELEASE SAVEPOINT row_commit");
+      skipped.push({
+        rowId,
+        rowNumber: row.row_number,
+        reason: error instanceof Error ? error.message : "Commit failed",
+      });
+    }
+  }
+  const remaining = await client.query(
+    `SELECT count(*) FROM import_rows r
+     WHERE r.batch_id=$1
+       AND r.outcome NOT IN ('REJECTED','ALREADY_IMPORTED','SOURCE_CHANGE_REVIEW')
+       AND NOT EXISTS (SELECT 1 FROM cases c WHERE c.import_row_id=r.id)`,
+    [batchId],
+  );
+  await client.query("UPDATE import_batches SET status=$2 WHERE id=$1", [
+    batchId,
+    Number(remaining.rows[0].count) === 0 ? "COMMITTED" : "PREVIEW",
+  ]);
+  return { committedCaseIds, committedRowIds, skipped, requested: rowIds.length };
+}
+
+async function insertCaseAndAudit(
+  client: PoolClient,
+  row: {
+    id: string;
+    batch_id: string;
+    source_record_id: string | null;
+    source_url: string | null;
+    original_values: unknown;
+    proposed_values: {
+      title: string;
+      description: string | null;
+      receivedDate: string | null;
+      normalizedStatus: string | null;
+    };
+  },
+  actorId: string,
+): Promise<string> {
+  const value = row.proposed_values;
+  const createdAt = new Date().toISOString();
+  const directory = await findDirectory(client, value.title, value.description);
+  const inserted = await client.query(
+    `INSERT INTO cases(source_platform,source_record_id,source_url,import_batch_id,import_row_id,original_values,title,description,received_date,normalized_status,department_id,created_at) SELECT b.source_platform,$1,$2,b.id,$3,$4,$5,$6,$7,$8,$9,$10 FROM import_batches b WHERE b.id=$11 ON CONFLICT(source_platform,source_record_id) DO NOTHING RETURNING id`,
+    [
+      row.source_record_id,
+      row.source_url,
+      row.id,
+      row.original_values,
+      value.title,
+      value.description,
+      value.receivedDate,
+      value.normalizedStatus ?? "NEEDS_CLARIFICATION",
+      directory?.departmentId ?? null,
+      createdAt,
+      row.batch_id,
+    ],
+  );
+  if (!inserted.rows[0]) throw new Error("Source record already exists; review required");
+  const caseId = String(inserted.rows[0].id);
+  await client.query(
+    `INSERT INTO audit_events(entity_type,entity_id,event_type,actor_id,event_time,before_values,after_values,metadata) VALUES('case',$1,'CASE_IMPORTED',$2,$3,NULL,$4,$5)`,
+    [
+      caseId,
+      actorId,
+      createdAt,
+      { caseId, sourceRecordId: row.source_record_id },
+      { batchId: String(row.batch_id), importRowId: String(row.id) },
+    ],
+  );
+  return caseId;
 }

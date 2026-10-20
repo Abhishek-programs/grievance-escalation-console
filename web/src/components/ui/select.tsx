@@ -2,13 +2,21 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils.ts";
 
-export function Select(props: React.ComponentProps<typeof SelectPrimitive.Root>) {
+export function Select(
+  props: React.ComponentProps<typeof SelectPrimitive.Root>,
+) {
   return <SelectPrimitive.Root {...props} />;
 }
-export function SelectValue(props: React.ComponentProps<typeof SelectPrimitive.Value>) {
+export function SelectValue(
+  props: React.ComponentProps<typeof SelectPrimitive.Value>,
+) {
   return <SelectPrimitive.Value {...props} />;
 }
-export function SelectTrigger({ className, children, ...props }: React.ComponentProps<typeof SelectPrimitive.Trigger>) {
+export function SelectTrigger({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Trigger>) {
   return (
     <SelectPrimitive.Trigger
       className={cn(
@@ -24,24 +32,37 @@ export function SelectTrigger({ className, children, ...props }: React.Component
     </SelectPrimitive.Trigger>
   );
 }
-export function SelectContent({ className, children, ...props }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+export function SelectContent({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
-        className={cn("z-50 overflow-hidden rounded-md border bg-card text-card-foreground shadow-md", className)}
+        className={cn(
+          "z-50 overflow-hidden rounded-md border bg-card text-card-foreground shadow-md",
+          className,
+        )}
         position="popper"
         {...props}
       >
-        <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
+        <SelectPrimitive.Viewport className="p-1">
+          {children}
+        </SelectPrimitive.Viewport>
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
   );
 }
-export function SelectItem({ className, children, ...props }: React.ComponentProps<typeof SelectPrimitive.Item>) {
+export function SelectItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Item>) {
   return (
     <SelectPrimitive.Item
       className={cn(
-        "relative flex w-full cursor-pointer items-center rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none focus:bg-accent data-[disabled]:opacity-50",
+        "relative flex w-full cursor-pointer items-center rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none focus:bg-accent data-disabled:opacity-50",
         className,
       )}
       {...props}

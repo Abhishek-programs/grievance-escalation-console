@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router";
 import { bucketDescriptions, bucketLabels, request } from "./api.ts";
 import { BuildLink, BuildPage } from "./components/BuildPage.tsx";
+import { BuildNote, buildDocument } from "./components/BuildNotes.tsx";
 import { CaseTable } from "./components/CaseTable.tsx";
 import { DeskHeader } from "./components/DeskHeader.tsx";
 import { EvidenceDrawer } from "./components/EvidenceDrawer.tsx";
@@ -33,16 +35,8 @@ export default function App() {
   const [error, setError] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
   const [dark, setDark] = useState(() => localStorage.getItem("sdoc-theme") !== "light");
-  const [path, setPath] = useState(() => window.location.pathname);
-
-  function visit(event: React.MouseEvent<HTMLAnchorElement>) {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-    event.preventDefault();
-    const href = event.currentTarget.getAttribute("href");
-    if (!href || href === window.location.pathname) return;
-    window.history.pushState(null, "", href);
-    setPath(href);
-  }
+  const { pathname } = useLocation();
+  const toggleTheme = () => setDark((value) => !value);
 
   useEffect(() => {
     const theme = dark ? "dark" : "light";
@@ -52,17 +46,11 @@ export default function App() {
   }, [dark]);
 
   useEffect(() => {
-    const sync = () => setPath(window.location.pathname);
-    window.addEventListener("popstate", sync);
-    return () => window.removeEventListener("popstate", sync);
-  }, []);
-
-  useEffect(() => {
-    const built = path === "/how-it-is-built";
-    const title = built ? "How this desk is built" : "Grievance desk";
-    const description = built
-      ? "A build log of the grievance desk: transactions, the read model, and email verification for new cases."
-      : "A review-first desk for fictional grievances. Import a complaint, check the deadline, and see who should receive it.";
+    const built = buildDocument(pathname);
+    const title = built?.title ?? "Grievance desk";
+    const description =
+      built?.description ??
+      "A review-first desk for fictional grievances. Import a complaint, check the deadline, and see who should receive it.";
     document.title = title;
     for (const name of ["description", "og:description", "twitter:description"]) {
       document.querySelector(`meta[name="${name}"], meta[property="${name}"]`)?.setAttribute("content", description);
@@ -71,7 +59,7 @@ export default function App() {
       document.querySelector(`meta[property="${name}"], meta[name="${name}"]`)?.setAttribute("content", title);
     }
     window.scrollTo(0, 0);
-  }, [path]);
+  }, [pathname]);
 
   useEffect(() => {
     request<{ email: string | null }>("/api/auth/session", { method: "GET" })
@@ -86,7 +74,7 @@ export default function App() {
   }, [refreshToken]);
 
   useEffect(() => {
-    if (path !== "/") return;
+    if (pathname !== "/") return;
     let active = true;
     setLoading(true);
     request<Dashboard>(
@@ -107,7 +95,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [bucket, page, refreshToken, path, email]);
+  }, [bucket, page, refreshToken, pathname, email]);
 
   const loadEvidence = useCallback(async (id: string) => {
     setEvidence(await request<IEvidence>(`/api/cases/${id}/evidence`, { method: "GET" }));
@@ -139,56 +127,58 @@ export default function App() {
     setPage(1);
   }
 
-  if (path === "/how-it-is-built") {
-    return (
-      <BuildPage
-        dark={dark}
-        onToggleTheme={() => setDark((value) => !value)}
-        onNavigate={visit}
-      />
-    );
-  }
+  const theme = { dark, onToggleTheme: toggleTheme };
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <DeskHeader
-        health={health}
-        email={email}
-        dark={dark}
-        onToggleTheme={() => setDark((value) => !value)}
-        onSignOut={() => {
-          void request("/api/auth/logout", { method: "POST" }).finally(() => setEmail(null));
-        }}
+    <Routes>
+      <Route path="/how-it-is-built" element={<BuildPage {...theme} />} />
+      <Route path="/how-it-is-built/:slug" element={<BuildNote {...theme} />} />
+      <Route
+        path="/"
+        element={
+          <div className="flex min-h-screen flex-col">
+            <DeskHeader
+              health={health}
+              email={email}
+              dark={dark}
+              onToggleTheme={toggleTheme}
+              onSignOut={() => {
+                void request("/api/auth/logout", { method: "POST" }).finally(() => setEmail(null));
+              }}
+            />
+            <main className="mx-auto flex w-[min(1328px,calc(100%-2.5rem))] flex-1 flex-col gap-8 py-7 pb-14">
+              {error && <Alert>{error}</Alert>}
+              <ImportReview
+                email={email}
+                onSignedIn={(next) => {
+                  setEmail(next);
+                  setRefreshToken((value) => value + 1);
+                }}
+                onCommitted={() => setRefreshToken((value) => value + 1)}
+              />
+              <MetricCards metrics={dashboard.metrics} active={bucket} onSelect={selectBucket} />
+              <CaseTable
+                result={dashboard.cases}
+                title={bucketLabels[bucket as keyof typeof bucketLabels]}
+                description={bucketDescriptions[bucket as keyof typeof bucketDescriptions]}
+                loading={loading}
+                onOpen={openEvidence}
+                onPage={setPage}
+              />
+            </main>
+            <BuildLink />
+            <PocFooter />
+            <EvidenceDrawer
+              evidence={evidence}
+              email={email}
+              onSignedIn={setEmail}
+              onClose={closeEvidence}
+              onChanged={refreshEvidence}
+            />
+          </div>
+        }
       />
-      <main className="mx-auto flex w-[min(1328px,calc(100%-2.5rem))] flex-1 flex-col gap-8 py-7 pb-14">
-        {error && <Alert>{error}</Alert>}
-        <ImportReview
-          email={email}
-          onSignedIn={(next) => {
-            setEmail(next);
-            setRefreshToken((value) => value + 1);
-          }}
-          onCommitted={() => setRefreshToken((value) => value + 1)}
-        />
-        <MetricCards metrics={dashboard.metrics} active={bucket} onSelect={selectBucket} />
-        <CaseTable
-          result={dashboard.cases}
-          title={bucketLabels[bucket as keyof typeof bucketLabels]}
-          description={bucketDescriptions[bucket as keyof typeof bucketDescriptions]}
-          loading={loading}
-          onOpen={openEvidence}
-          onPage={setPage}
-        />
-      </main>
-      <BuildLink onNavigate={visit} />
-      <PocFooter />
-      <EvidenceDrawer
-        evidence={evidence}
-        email={email}
-        onSignedIn={setEmail}
-        onClose={closeEvidence}
-        onChanged={refreshEvidence}
-      />
-    </div>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

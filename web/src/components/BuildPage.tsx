@@ -1,3 +1,5 @@
+import { Link } from "react-router";
+import { buildNotes } from "./BuildNotes.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 import { buttonVariants } from "./ui/button.tsx";
 
@@ -19,9 +21,9 @@ const sections = [
     kicker: "The stack",
     title: "Node runs the TypeScript. PostgreSQL holds the rules",
     body: [
-      "The API is Express 5 on Node 24. The server sources are TypeScript, and Node runs them directly, so a change to a transaction is the process that is already listening. React 19 is the desk. Vite proxies /api during development. PostgreSQL 18 is the only store. Migrations in server/migrations apply in filename order and record themselves in schema_migrations. docs/openapi.yaml is the HTTP contract.",
+      "The API is Express 5 on Node 24. The server sources are TypeScript, and Node runs them directly, so a change to a transaction is the process that is already listening. React 19 is the desk, and React Router gives this log its own addresses. Vite proxies /api during development. PostgreSQL 18 is the only store. Migrations in server/migrations apply in filename order and record themselves in schema_migrations. docs/openapi.yaml is the HTTP contract.",
       "I kept the queries in the service that depends on them. The behavior worth reviewing is a unique key, a row lock, a savepoint, and a view of the latest evaluation. An ORM would have hidden those behind a model that does not know about partial indexes or FOR UPDATE. There is no queue and no model call. The deadline is a function over stored policy, and the recommendation is a rule over that date.",
-      "The frontend is one page on purpose. Import, the queue, and the complaint sheet share the same operational state. Splitting them into routes would have made the workflow look larger than it is. The second page is this log.",
+      "The desk stays one route. Import, the queue, and the complaint sheet share the same operational state, and splitting that workflow into pages would have made it look larger than it is. This log is the other route. Each longer note has its own path, and the browser back button returns to the section you left.",
     ],
   },
   {
@@ -106,17 +108,9 @@ const sections = [
   },
 ];
 
-export function BuildLink({
-  onNavigate,
-}: {
-  onNavigate: (event: React.MouseEvent<HTMLAnchorElement>) => void;
-}) {
+export function BuildLink() {
   return (
-    <a
-      href={buildPath}
-      onClick={onNavigate}
-      className="group block border-t border-border bg-secondary"
-    >
+    <Link to={buildPath} className="group block border-t border-border bg-secondary">
       <div className="mx-auto w-[min(1328px,calc(100%-2.5rem))] py-16 md:py-24">
         <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
           Build log
@@ -130,26 +124,24 @@ export function BuildLink({
         </p>
         <span className={`${buttonVariants()} mt-8`}>Read the build</span>
       </div>
-    </a>
+    </Link>
   );
 }
 
 export function BuildPage({
   dark,
   onToggleTheme,
-  onNavigate,
 }: {
   dark: boolean;
   onToggleTheme: () => void;
-  onNavigate: (event: React.MouseEvent<HTMLAnchorElement>) => void;
 }) {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border">
         <div className="mx-auto flex min-h-11 w-[min(1328px,calc(100%-2.5rem))] items-center justify-between gap-4">
-          <a href="/" onClick={onNavigate} className="text-sm text-(--link)">
+          <Link to="/" className="text-sm text-(--link)">
             Back to the desk
-          </a>
+          </Link>
           <ThemeToggle dark={dark} onToggle={onToggleTheme} />
         </div>
       </header>
@@ -160,17 +152,36 @@ export function BuildPage({
         <h1 className="mt-4 max-w-5xl text-[clamp(36px,3.7vw,54px)]">
           How this desk is built
         </h1>
-        <p className="mt-4 max-w-6xl text-sm leading-[1.9] text-muted-foreground">
-          Ten notes from the implementation. Each one names the constraint, the
-          tool that holds it, and the failure the design is there to prevent.
+        <p className="mt-4 max-w-[42rem] text-sm leading-[1.9] text-muted-foreground">
+          Ten short notes from the implementation, then four longer ones on the
+          API, the database, the schema, and production.
         </p>
         <p className="mt-10 max-w-6xl font-display text-[1.65rem] leading-[1.25] font-medium tracking-[-0.04em] text-balance">
           A write is finished when a later reader can see why it was allowed.
         </p>
         <p className="mt-8 text-[11px] tracking-wide text-muted-foreground uppercase">
-          TypeScript · Node 24 · Express 5 · PostgreSQL 18 · React 19 · Vite ·
-          Resend
+          TypeScript · Node 24 · Express 5 · PostgreSQL 18 · Neon · React 19 ·
+          React Router · Vite · Resend
         </p>
+        <nav className="mt-14 max-w-[42rem] border-t border-border">
+          {buildNotes.map((note, index) => (
+            <Link
+              key={note.path}
+              to={note.path}
+              className="grid grid-cols-[2.5rem_1fr] gap-x-4 border-b border-border py-5"
+            >
+              <span className="pt-1 text-[11px] text-muted-foreground tabular-nums">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span>
+                <span className="text-sm text-(--link)">{note.title}</span>
+                <span className="mt-1 block text-[11px] leading-relaxed text-muted-foreground">
+                  {note.description}
+                </span>
+              </span>
+            </Link>
+          ))}
+        </nav>
         <div className="mt-16">
           {sections.map((section) => (
             <section
@@ -194,9 +205,9 @@ export function BuildPage({
             </section>
           ))}
           <section className="border-t border-border py-10">
-            <a href="/" onClick={onNavigate} className={buttonVariants()}>
+            <Link to="/" className={buttonVariants()}>
               Back to the desk
-            </a>
+            </Link>
           </section>
         </div>
       </main>
